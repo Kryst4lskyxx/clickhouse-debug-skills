@@ -88,6 +88,23 @@ Debugging a production cluster must not *become* the incident. Every query this 
 └── README.md
 ```
 
+## Releasing (maintainers)
+
+Versions live in 5 places (SKILL.md frontmatter, `metadata.json`, `plugin.json`,
+and two fields in `marketplace.json`). Bump them all at once:
+
+```bash
+./scripts/bump-version.sh 0.2.0
+# edit CHANGELOG.md, then:
+git commit -am "release: v0.2.0"
+git tag v0.2.0 && git push && git push --tags
+gh release create v0.2.0 --generate-notes
+```
+
+`npx skills add` installs from the `main` branch, so keep `main` releasable — do
+work on a branch and merge. Plugin-marketplace users update with
+`/plugin marketplace update clickhouse-debug-skills` then re-install.
+
 ## License
 
 [Apache-2.0](./LICENSE).
