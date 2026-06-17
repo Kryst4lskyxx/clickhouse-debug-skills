@@ -1,0 +1,45 @@
+name: 🐞 Bug report
+description: The skill misdiagnosed something, produced wrong guidance, or a script failed.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Do not paste real cluster telemetry** — sanitize
+        names/IDs (e.g. `OLAP-FOO-ClickHouse`, `node-1.example.com`).
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt / scenario
+      description: The (sanitized) request you gave the agent, and the setup (bare metal vs k8s, what telemetry was available).
+      placeholder: "e.g. 'Node X shows up<1 around 08:40, bare metal, readonly HTTP available. Did it reboot or crash?'"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What the skill concluded
+      description: The diagnosis / output you got (sanitized).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the correct answer was
+      description: The actual root cause, and ideally how it should have been reached.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Skill version
+      description: From metadata.json / SKILL.md frontmatter (e.g. 0.1.0).
+    validations:
+      required: false
+  - type: input
+    id: ch-version
+    attributes:
+      label: ClickHouse version
+      description: The cluster's version (and the source checkout you used).
+    validations:
+      required: false

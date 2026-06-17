@@ -1,5 +1,10 @@
 # ClickHouse Debug Skills
 
+[![Release](https://img.shields.io/github/v/release/Kryst4lskyxx/clickhouse-debug-skills?sort=semver)](https://github.com/Kryst4lskyxx/clickhouse-debug-skills/releases)
+[![License](https://img.shields.io/github/license/Kryst4lskyxx/clickhouse-debug-skills)](./LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+[![Issues](https://img.shields.io/github/issues/Kryst4lskyxx/clickhouse-debug-skills)](https://github.com/Kryst4lskyxx/clickhouse-debug-skills/issues)
+
 An [Agent Skill](https://agentskills.io) for **debugging live ClickHouse clusters and queries** — built to be used from inside a checked-out, version-matched ClickHouse source tree.
 
 It turns your source checkout into an incident cockpit: triage the cluster from the **outside** (Prometheus), drill into the **inside** (read-only `system.*` queries), and **confirm the root cause against the matched source** you're standing in. Every probe is resource-capped so a debug query can never OOM-kill or stall a production node.
@@ -87,6 +92,14 @@ Debugging a production cluster must not *become* the incident. Every query this 
 ├── LICENSE                   # Apache-2.0
 └── README.md
 ```
+
+## Contributing
+
+Issues and PRs are welcome — see **[CONTRIBUTING.md](./CONTRIBUTING.md)** for the full guide.
+
+- 🐞 **Found a bug or wrong diagnosis?** [Open a bug report.](https://github.com/Kryst4lskyxx/clickhouse-debug-skills/issues/new?template=bug_report.yml)
+- 💡 **Want a new signature, reference, or capability?** [Open a feature request.](https://github.com/Kryst4lskyxx/clickhouse-debug-skills/issues/new?template=feature_request.yml)
+- 🔧 **Sending a PR?** Fork → branch → PR against `main` (it's protected; all changes land via PR). Never commit real cluster telemetry — `evals/` is gitignored for a reason.
 
 ## Releasing (maintainers)
 
