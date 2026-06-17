@@ -1,0 +1,42 @@
+name: 💡 Feature request
+description: Propose a new incident signature, probe, reference, or script improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Great signatures teach the *mechanism*, not just a lookup. Help the skill
+        reason, and keep any examples sanitized.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of contribution
+      options:
+        - New incident signature / failure mode
+        - New or improved probe (Prometheus / system.*)
+        - Reference playbook improvement
+        - Script (chq.sh / promq.sh) improvement
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: symptom
+    attributes:
+      label: Symptom
+      description: What does the operator observe? (metric pattern, error code, behavior)
+    validations:
+      required: true
+  - type: textarea
+    id: rootcause
+    attributes:
+      label: Root cause & how to reach it
+      description: The underlying cause, and the diagnosis path an agent should follow. Cite a ClickHouse source location or metric if you can.
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Fix routing (optional)
+      description: If there's a remedy, which clickhouse-best-practices rule(s) does it map to?
+    validations:
+      required: false

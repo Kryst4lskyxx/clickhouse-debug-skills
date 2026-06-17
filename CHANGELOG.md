@@ -4,6 +4,10 @@ All notable changes to the `clickhouse-debug` skill are documented here.
 This project follows [Semantic Versioning](https://semver.org): patch = fixes/wording,
 minor = new capability/reference/script, major = breaking behavior or layout change.
 
+## [Unreleased]
+
+_Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
+
 ## [0.1.0] - 2026-06-17
 
 Initial public release.
