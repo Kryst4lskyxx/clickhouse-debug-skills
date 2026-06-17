@@ -1,0 +1,14 @@
+{
+  "version": "0.1.0",
+  "author": "Ye Yuan",
+  "date": "June 2026",
+  "clickhouseVersion": "23.8+",
+  "abstract": "Diagnose live ClickHouse cluster and query incidents from a checked-out, version-matched ClickHouse source tree. Triages the outside view (Prometheus: node up-ness, OOM, CPU/iowait, disk, network, bare-metal vs k8s) and the inside view (read-only queries against the cluster's own system.* tables: errors, query_log forensics and attribution, processes, parts/merges, replicas, thread-pool and FD exhaustion, settings), then confirms every root-cause claim against the matched source (error code to throw site, metric to semantics). Every probe is resource-capped so a debug query can never OOM-kill or stall a production node. Delegates the remedy stage to clickhouse-best-practices.",
+  "references": [
+    "https://clickhouse.com/docs/operations/system-tables",
+    "https://clickhouse.com/docs/operations/monitoring",
+    "https://clickhouse.com/docs/operations/settings/query-complexity",
+    "https://github.com/ClickHouse/ClickHouse",
+    "https://github.com/ClickHouse/agent-skills"
+  ]
+}

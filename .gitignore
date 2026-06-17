@@ -1,0 +1,9 @@
+.DS_Store
+*.pyc
+__pycache__/
+*.skill
+node_modules/
+
+# Eval fixtures contain real incident telemetry (internal cluster/host names,
+# customer references) — never publish them. Keep eval development local only.
+evals/
