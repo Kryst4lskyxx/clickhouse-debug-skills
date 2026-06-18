@@ -8,6 +8,37 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.1.2] - 2026-06-18
+
+Integrate the Altinity companion skills and deepen the source-confirmation step
+that distinguishes this skill. Documentation/methodology only — no script behavior
+changes.
+
+### Added
+- **Companion-skill integration with the Altinity skills.** Diagnosis now routes
+  into two more suites alongside `clickhouse-best-practices`, turning the companion
+  model into three tiers (Fix canon / diagnosis depth / cluster map):
+  - **`altinity-expert-clickhouse-*`** (per-domain `system.*` specialists) — the
+    Inside stage gains a symptom→specialist routing table (caches, dictionaries,
+    kafka, mutations, grants, index-analysis, ingestion, reporting, schema, storage,
+    part-log, metrics, logs, security), with the standing rule that any borrowed SQL
+    is re-run through `chq.sh` so the `agent-query-safety` caps apply — the
+    specialists assume an uncapped MCP/`clickhouse-client` session.
+  - **`altinity-profiler-clickhouse`** — a per-cluster `<cluster>-analyst` schema
+    map consulted in the Frame stage when a diagnosis depends on table/engine/key
+    facts.
+- **Install instructions** for both Altinity suites in `SKILL.md` and `README.md`,
+  and a "detecting them" check so the skill degrades gracefully when a suite is
+  absent. Normalized the `clickhouse-best-practices` install path to
+  `clickhouse/agent-skills` across both files.
+- **`references/source-map.md`** — a Confirm-stage playbook for navigating the
+  matched ClickHouse source tree: version-match check, error-code → throw-site grep
+  patterns, metric/setting/`system.*`-column lookup locations, crash-mechanism
+  pointers, a "where things live" map, and worked examples for the codes the skill
+  names. Source confirmation is now the skill's sole differentiator (diagnosis depth
+  → `altinity-expert-*`, remedies → `clickhouse-best-practices`), so it gets its own
+  reference and a prominent pointer from the "Confirming against the source" section.
+
 ## [0.1.1] - 2026-06-18
 
 Wrapper fixes from a real chproxy-fronted production debugging session, plus

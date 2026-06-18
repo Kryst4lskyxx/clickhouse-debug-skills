@@ -9,7 +9,7 @@ An [Agent Skill](https://agentskills.io) for **debugging live ClickHouse cluster
 
 It turns your source checkout into an incident cockpit: triage the cluster from the **outside** (Prometheus), drill into the **inside** (read-only `system.*` queries), and **confirm the root cause against the matched source** you're standing in. Every probe is resource-capped so a debug query can never OOM-kill or stall a production node.
 
-> This skill diagnoses. It deliberately defers the *remedy* to the official [`clickhouse-best-practices`](https://github.com/ClickHouse/agent-skills) skill — install that too (see [Companion skill](#companion-skill)).
+> This skill diagnoses. It defers the *remedy* to ClickHouse's official [`clickhouse-best-practices`](https://github.com/ClickHouse/agent-skills), and borrows deeper `system.*` playbooks plus a per-cluster schema map from the [Altinity skills](https://github.com/Altinity/altinity-skills) — install all three (see [Companion skills](#companion-skills)).
 
 ## Installation
 
@@ -32,15 +32,21 @@ The CLI auto-detects your installed agents and prompts you where to install.
 
 Copy `skills/clickhouse-debug/` into your agent's skills directory (e.g. `~/.claude/skills/` for Claude Code, `~/.agents/skills/` for the agentskills.io layout).
 
-## Companion skill
+## Companion skills
 
-This skill owns **diagnosis**; the remedy/safety canon lives in the official ClickHouse skills. Install them so the Fix stage can cite concrete rules:
+This skill owns **diagnosis**. Three companion suites cover everything around it — install all three:
 
 ```bash
-npx skills add clickhouse/agent-skills
+npx skills add clickhouse/agent-skills                                 # Fix canon: clickhouse-best-practices (+ architecture-advisor)
+npx skills add Altinity/altinity-skills/altinity-expert-clickhouse/    # diagnosis depth: per-domain system.* playbooks
+npx skills add Altinity/altinity-skills/altinity-profiler-clickhouse/  # cluster map: per-cluster schema knowledge base
 ```
 
-If `clickhouse-best-practices` is missing, the skill will tell you to install it before recommending fixes.
+- **`clickhouse-best-practices`** — the remedy/safety canon. The Fix stage cites its rules instead of improvising, and `chq.sh`'s caps follow its `agent-query-safety` rule.
+- **`altinity-expert-clickhouse-*`** — deep `system.*` playbooks (caches, dictionaries, kafka, mutations, grants, index-analysis, storage, …). The Inside stage routes into the matching specialist; any borrowed SQL is re-run through `chq.sh` so the caps still apply (the specialists assume an uncapped session).
+- **`altinity-profiler-clickhouse`** — generates a `<cluster>-analyst` schema map used in the Frame stage when a diagnosis needs the cluster's tables/engines/keys.
+
+If a suite is missing, the skill says so and continues with reduced depth — uncited fixes, and `system.*` drilling limited to its own references.
 
 ## What it does
 
@@ -75,7 +81,7 @@ The skill gathers the inputs it needs (the problem, the target in Prometheus, co
 - `scripts/chq.sh` — read-only ClickHouse HTTP query helper with **resource caps baked into every call** (`max_memory_usage`, `max_execution_time`, `max_rows_to_read`, `readonly=1`, …), aligned to the official `agent-query-safety` rule.
 - `scripts/promq.sh` — Prometheus query helper (instant + range modes, pretty-printed).
 
-Reference playbooks live in `references/cluster-state.md` (Prometheus) and `references/query-state.md` (`system.*`).
+Reference playbooks, one per stage: `references/cluster-state.md` (outside / Prometheus), `references/query-state.md` (inside / `system.*`), and `references/source-map.md` (confirm / navigating the matched source tree — the differentiator).
 
 ## Safety
 
