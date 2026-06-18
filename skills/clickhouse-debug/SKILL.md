@@ -17,7 +17,7 @@ description: >-
 license: Apache-2.0
 metadata:
   author: Ye Yuan
-  version: "0.1.2"
+  version: "0.2.0"
 ---
 
 # ClickHouse cluster & query debugging
@@ -95,7 +95,7 @@ You need these to start. If any are missing, **ask the user — don't guess**:
 1. **The problem.** A symptom, alert, error code, node/pod name, or "this is
    slow". The more concrete the better.
 2. **Target cluster + Prometheus.** The Prometheus base URL, and how the
-   cluster is labelled there (e.g. `cluster="OLAP-FOO-ClickHouse"`,
+   cluster is labelled there (e.g. `cluster="example-clickhouse"`,
    or by `instance`/`pod`). If unsure of the label scheme, discover it (see
    cluster-state reference) rather than asking the user to recite it.
 3. **Direct ClickHouse access.** HTTP endpoint (`http://host:8123` or
@@ -163,24 +163,79 @@ CH_MAX_BYTES=$((500*1000*1000*1000)) CH_MAX_TIME=60 ./chq.sh "SELECT ..."
 ```
 
 Every cap is overridable this way: `CH_MAX_MEM`, `CH_MAX_TIME`, `CH_MAX_ROWS`,
-`CH_MAX_BYTES`, `CH_MAX_EST_TIME`, `CH_MAX_RESULT_ROWS`, `CH_MAX_THREADS`.
-**Fan-out multiplies the scan:** a `clusterAllReplicas(...)` query reads from
-every node, so bytes/rows scanned scale with node count — a 100 GB cap that's
-fine on one node trips `Code: 307 ... Limit for bytes to read exceeded` across
-60+ nodes. Narrow the time window first, then raise `CH_MAX_BYTES` for that call.
+`CH_MAX_BYTES`, `CH_MAX_EST_TIME`, `CH_MAX_RESULT_ROWS`, `CH_MAX_THREADS`. When a
+cap trips, `chq.sh` prints a one-line stderr hint naming the exact knob to raise
+(e.g. `hit max_rows_to_read (CH_MAX_ROWS=...)`) — follow it rather than guessing.
+
+**Fan-out multiplies the scan — the single biggest recurring friction on a large
+fleet.** A `clusterAllReplicas(...)` query reads from every node, so rows/bytes
+scanned scale with node count. The default `CH_MAX_ROWS=1e9` is sized for one
+node; on a 60-node fleet a 2-day shard-level `query_log` scan blows straight past
+it (`Code: 158 ... Limit for rows to read exceeded` at ~1B rows) before returning
+anything. The fix is **window-first, then scale the cap to the fleet:**
+
+1. **Discover the node count first** (you need it to size the cap):
+   `source ./.chenv && ./chq.sh "SELECT count() FROM clusterAllReplicas(<cluster>, system.one)"`.
+2. **Narrow the time window hard** — minutes/hours around the incident, not days.
+   The window is the cheapest lever; it cuts the scan on every node at once.
+3. **Then raise the relevant cap for that one call,** roughly scaled by node
+   count. A scan that reads ~80M rows/node over the window needs
+   `CH_MAX_ROWS ≈ 80M × nodes` plus headroom:
+
+```bash
+# 6h shard-level query_log scan across a large (60+ node) fleet, rows cap raised for it
+source ./.chenv && CH_MAX_ROWS=$((5*1000*1000*1000)) ./chq.sh "
+  SELECT hostName(), count(), sum(read_bytes)
+  FROM clusterAllReplicas(<cluster>, system.query_log)
+  WHERE event_time > now() - INTERVAL 6 HOUR
+  GROUP BY hostName()"
+```
+
+Raise `CH_MAX_BYTES` the same way for byte-bound scans (`Code: 307`). Keep the
+override inline so the safe default is restored on the next call.
+
+**These caps contaminate `query_log.Settings`.** Because the wrapper sends them as
+query settings, every probe it runs records `max_threads`, `max_memory_usage`,
+etc. in its own `system.query_log` row. Don't read those values back as the
+cluster's production config — that's the debug cap, not the server default. To
+read real config, query `system.settings` on a normal session (see
+`references/query-state.md`, Settings section).
 
 ## Setup (once per session)
 
+**Shell state does not persist between Bash tool calls.** The working *directory*
+carries over, but `export`ed variables do **not** — each call starts a fresh
+shell, so a `PROM`/`CH_URL`/creds `export` in one call is gone by the next, and
+the scripts fail with `set CH_URL...`. Write the config to a file once and
+`source` it at the start of every call:
+
 ```bash
 cd <skill-dir>/scripts
+cat > .chenv <<'EOF'
 export PROM='https://prometheus.example.com'          # from the user
 export CH_URL='http://chnode.example.com:8123'         # from the user
 export CH_USER='readonly_user'; export CH_PASS='...'   # read-only creds
+EOF
+chmod 600 .chenv     # it holds a password; .chenv is gitignored
 ```
+
+Then prefix each later call with `source ./.chenv`:
+
+```bash
+source ./.chenv && ./chq.sh "SELECT version()"
+source ./.chenv && ./promq.sh 'up{cluster="..."}'
+```
+
+(Or inline the vars on the one call: `CH_URL=... CH_USER=... ./chq.sh "..."`.)
 
 - `./promq.sh 'PROMQL'` — instant query, sorted desc.
 - `./promq.sh 'PROMQL' range 6h 300s` — range, per-series avg/max.
 - `./chq.sh "SELECT ..."` — capped read-only SQL (TSV-with-names).
+
+Both scripts **retry once** on a transient curl failure (DNS/connect/TLS reset) —
+a sandbox/resolver hiccup (curl exit 6/7) is not an outage, so don't conclude the
+endpoint is down on the first failure. If a probe genuinely can't connect, sanity
+-check the endpoint with a raw `curl -sk "$CH_URL/ping"` before re-planning.
 
 Internal CAs + sandboxed egress: run the Bash tool with
 `dangerouslyDisableSandbox: true` for these calls (curl already uses `-k`).

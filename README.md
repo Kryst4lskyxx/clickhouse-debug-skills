@@ -78,8 +78,8 @@ The skill gathers the inputs it needs (the problem, the target in Prometheus, co
 
 ### Bundled helpers
 
-- `scripts/chq.sh` — read-only ClickHouse HTTP query helper with **resource caps baked into every call** (`max_memory_usage`, `max_execution_time`, `max_rows_to_read`, `readonly=1`, …), aligned to the official `agent-query-safety` rule.
-- `scripts/promq.sh` — Prometheus query helper (instant + range modes, pretty-printed).
+- `scripts/chq.sh` — read-only ClickHouse HTTP query helper with **resource caps baked into every call** (`max_memory_usage`, `max_execution_time`, `max_rows_to_read`, …), aligned to the official `agent-query-safety` rule. Retries once on a transient curl failure and prints a stderr hint naming the exact cap to raise when one trips.
+- `scripts/promq.sh` — Prometheus query helper (instant + range modes, pretty-printed). Flags `0 series` (likely a wrong/absent metric name) instead of a silent empty table, and retries once on a transient fetch failure.
 
 Reference playbooks, one per stage: `references/cluster-state.md` (outside / Prometheus), `references/query-state.md` (inside / `system.*`), and `references/source-map.md` (confirm / navigating the matched source tree — the differentiator).
 

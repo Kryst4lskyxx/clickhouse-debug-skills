@@ -4,6 +4,9 @@ __pycache__/
 *.skill
 node_modules/
 
+# Per-session connection config written by the Setup step — holds a CH password.
+.chenv
+
 # Eval fixtures contain real incident telemetry (internal cluster/host names,
 # customer references) — never publish them. Keep eval development local only.
 evals/

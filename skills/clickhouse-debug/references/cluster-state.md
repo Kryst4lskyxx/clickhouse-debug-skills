@@ -11,7 +11,7 @@ discover it first if unknown:
 
 ```bash
 ./promq.sh 'group by (cluster) (up)'          # what cluster labels exist
-./promq.sh 'up{cluster="OLAP-FOO-ClickHouse"}'  # then scope to yours
+./promq.sh 'up{cluster="example-clickhouse"}'  # then scope to yours
 ```
 
 To find a **metric name** when you only know a fragment, match server-side with
@@ -21,6 +21,12 @@ the entire catalog as one multi-hundred-KB line that chokes `jq`:
 ```bash
 ./promq.sh 'group by (__name__) ({__name__=~"ClickHouse.*Memory.*"})'  # names only
 ```
+
+A **guessed metric name that doesn't exist returns 0 series, not an error** — the
+classic silent NA that reads like "the value is zero". Metric families vary by
+build and by bare-metal-vs-k8s, so discover the real name before trusting a probe.
+`promq.sh` now prints a `0 series — may not exist here` warning instead of an empty
+table, but the discipline is the same: confirm the name, don't assume it.
 
 There are two metric families:
 - **`node_*`** — node_exporter (the host OS). Present on bare metal; on k8s you
@@ -63,14 +69,37 @@ per-query `max_memory_usage` cap is the classic setup. Next step: query
 
 ## Step 3 — CPU, iowait, load
 
+### Per-node iowait (the disk-straggler discriminator)
+
+iowait is the highest-value CPU signal for this skill — disk-straggler incidents
+are exactly its wheelhouse — but it's easy to get a silent NA. Use the
+**`node_exporter` CPU counter as a per-core fraction**, which is comparable across
+nodes regardless of core count, and is the recipe that actually works on bare metal:
+
 ```bash
-./promq.sh 'sum by (instance) (rate(node_cpu_seconds_total{cluster="...",mode="iowait"}[5m]))' 
-./promq.sh 'sum by (instance) (rate(node_cpu_seconds_total{cluster="...",mode!="idle"}[5m]))'
-./promq.sh 'node_load5{cluster="..."}'
+# fraction of CPU time in iowait, per node (0..1). avg by, NOT sum by:
+# sum scales with core count and isn't comparable between heterogeneous nodes.
+./promq.sh 'avg by (instance) (rate(node_cpu_seconds_total{cluster="...",mode="iowait"}[5m]))'
+./promq.sh 'avg by (instance) (rate(node_cpu_seconds_total{cluster="...",mode="iowait"}[5m]))' range 6h 300s
+# total busy fraction (everything but idle), per node:
+./promq.sh 'avg by (instance) (rate(node_cpu_seconds_total{cluster="...",mode!="idle"}[5m]))'
 ```
 
+**Signals that don't discriminate (don't waste a round-trip):**
+- **`ClickHouseProfileEvents_OSIOWaitMicroseconds` (rate) often returns nothing**
+  on a given cluster — the server-side OS metrics may be disabled or named
+  differently. If it's empty, that's a missing metric, not zero iowait; fall back
+  to the `node_cpu_seconds_total` recipe above. (`promq.sh` now warns on 0 series.)
+- **`node_load5` / `LoadAverage1` rarely separates the tiers** — CPU load is
+  usually similar across nodes even when one is disk-bound. Use it to confirm a
+  node is busy, not to find the straggler.
+
 One node with ~10x the iowait of its peers, stable for hours, is rarely workload
-— suspect **hardware tier mismatch**. Confirm with disk metrics (step 4).
+— suspect **hardware tier mismatch**. Confirm with disk metrics (step 4). When no
+direct iowait number separates the tiers, the **query latency profile is the
+proxy**: a disk-straggler node shows a healthy p50 but a fat p999 (reads that miss
+page cache hit the slow device). See the per-node latency query in
+`references/query-state.md`.
 
 High CPU with **0 user queries** on the node points at background work — a
 failing-merge retry storm spins CPU re-acquiring the Context lock. Cross-check
@@ -86,11 +115,36 @@ failing-merge retry storm spins CPU re-acquiring the Context lock. Cross-check
 ./promq.sh 'sum by (instance,device) (rate(node_disk_writes_completed_total{cluster="..."}[5m]))'
 ```
 
+**Collapsing per-device metrics to one number per node.** Disk metrics are
+per-device (`device="nvme0n1"`, `sda`, `dm-0`, …), which is noisy and hard to map
+back to a node — a host has several devices and only one carries the data. Take
+the **busiest device per node** so each node gets a single comparable value:
+
+```bash
+# per-node disk busy = the hottest device on that host (util, 0..1)
+./promq.sh 'max by (instance) (rate(node_disk_io_time_seconds_total{cluster="..."}[5m]))'
+# per-node queue depth = hottest device
+./promq.sh 'max by (instance) (rate(node_disk_io_time_weighted_seconds_total{cluster="..."}[5m]))'
+# average read latency per device (seconds): time / completed ops; filter to the data device
+./promq.sh 'rate(node_disk_read_time_seconds_total{cluster="..."}[5m]) / rate(node_disk_reads_completed_total{cluster="..."}[5m])'
+```
+
+`max by (instance)` is the right reducer here (the data device is the slow one
+under load); `sum by` would dilute it across idle boot/log disks.
+
 Within one cluster, nodes can have different drives. A node doing *less* write
 work but showing *more* util / higher queue depth / higher write latency than
 peers is on slower media (SATA SSD vs NVMe). `node_disk_info` model strings are
 the proof. Note which device actually carries the data — many hosts boot off SATA
 but write data to NVMe; what matters is the device under load.
+
+**When the disk metrics themselves don't separate the tiers** (per-device labels
+won't map cleanly, or the cluster doesn't export `node_disk_*`), fall back to the
+**latency-profile proxy**: SATA-tier nodes show a normal p50 but a fat p999
+(cache-missing reads pay the slow-media penalty), while NVMe peers stay tight at
+p999. That per-node latency split (computed from `query_log` in
+`references/query-state.md`) is often the cleanest disk-straggler evidence you can
+get without a direct iowait number.
 
 Disk reads near zero everywhere is normal (recent data served from page cache);
 ClickHouse disk pressure is almost all writes (inserts + merges).
