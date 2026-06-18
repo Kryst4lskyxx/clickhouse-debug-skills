@@ -41,17 +41,30 @@ CH_MAX_EST_TIME="${CH_MAX_EST_TIME:-60}"             # reject queries projected 
 CH_MAX_RESULT_ROWS="${CH_MAX_RESULT_ROWS:-100000}"   # cap rows returned
 CH_MAX_THREADS="${CH_MAX_THREADS:-4}"                # don't fan out wide
 
+# Resolve the SQL. Order matters: prefer an explicit arg/-f over stdin. We must
+# NOT gate on `[ -t 0 ]` — when this runs under an agent/CI Bash tool stdin is
+# not a TTY, so that check would wrongly ignore the SQL argument and read an
+# empty query from stdin. Only fall back to stdin when no SQL arg was given.
 if [ "${1:-}" = "-f" ]; then
   sql="$(cat "${2:?-f needs a file}")"
-elif [ -t 0 ]; then
-  sql="${1:?provide SQL as arg, via -f FILE, or on stdin}"
+elif [ "$#" -gt 0 ]; then
+  sql="$1"
 else
   sql="$(cat)"
 fi
+: "${sql:?provide SQL as arg, via -f FILE, or on stdin}"
 
 auth=(-u "${CH_USER}:${CH_PASS}")
 
-curl -sk -m "$((CH_MAX_TIME + 10))" "${auth[@]}" "$CH_URL/" \
+# -G is critical: it forces every --data-urlencode field into the URL query
+# string. ClickHouse reads settings (and the query) ONLY from URL params; the
+# POST body is treated as raw SQL. Without -G these fields land in the body and
+# ClickHouse tries to parse `max_memory_usage=...&...` as a query (SYNTAX_ERROR).
+#
+# `readonly=1` must come LAST: ClickHouse applies URL params left-to-right, and
+# once readonly=1 is in effect no further settings can be changed. Putting it
+# after every cap (and default_format) lets the caps apply first, then locks down.
+curl -sk -m "$((CH_MAX_TIME + 10))" "${auth[@]}" -G "$CH_URL/" \
   --data-urlencode "max_memory_usage=${CH_MAX_MEM}" \
   --data-urlencode "max_execution_time=${CH_MAX_TIME}" \
   --data-urlencode "timeout_before_checking_execution_speed=0" \
@@ -61,6 +74,6 @@ curl -sk -m "$((CH_MAX_TIME + 10))" "${auth[@]}" "$CH_URL/" \
   --data-urlencode "max_result_rows=${CH_MAX_RESULT_ROWS}" \
   --data-urlencode "result_overflow_mode=break" \
   --data-urlencode "max_threads=${CH_MAX_THREADS}" \
-  --data-urlencode "readonly=1" \
   --data-urlencode "default_format=TabSeparatedWithNames" \
-  --data-urlencode "query=${sql}"
+  --data-urlencode "query=${sql}" \
+  --data-urlencode "readonly=1"
