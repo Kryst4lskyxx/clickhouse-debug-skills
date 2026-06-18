@@ -104,8 +104,13 @@ Non-negotiable rules:
   `timeout_before_checking_execution_speed=0` so it's a true wall clock),
   `max_estimated_execution_time` (rejects doomed queries before they start),
   `max_rows_to_read`, `max_bytes_to_read`, `max_result_rows`, `max_threads`, and
-  `readonly=1` on every call — exactly the `agent-query-safety` settings. Don't
-  hand-roll bare `curl` to the cluster unless you replicate those caps.
+  `use_query_cache=0` on every call — exactly the `agent-query-safety` settings.
+  Don't hand-roll bare `curl` to the cluster unless you replicate those caps.
+- **Connect with a read-only account** — that's the real write guardrail. The
+  wrapper does NOT send `readonly=1` by default, because a properly read-only
+  user (a `readonly=1`/`readonly=2` profile) rejects it with
+  `Cannot modify 'readonly' setting in readonly mode` (code 164). Only set
+  `CH_READONLY=1` if you must connect with a read-write account.
 - **Filter `system.*` log tables by time first, in a subquery, before any join
   or heavy aggregation.** `query_log`, `metric_log`, `asynchronous_metric_log`,
   `trace_log`, `part_log` are huge. `WHERE event_time > now() - INTERVAL 10 MINUTE`
