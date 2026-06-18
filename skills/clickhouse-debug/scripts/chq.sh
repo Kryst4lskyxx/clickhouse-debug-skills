@@ -10,12 +10,22 @@
 #   export CH_URL='http://chnode.example.com:8123'   # or https://...:8443
 #   export CH_USER='readonly_user'
 #   export CH_PASS='...'                             # optional
-#   # Optional overrides (sane safe defaults below):
-#   export CH_MAX_MEM=$((20*1024*1024*1024))         # 20 GiB per-query cap
-#   export CH_MAX_TIME=30                            # seconds
+#   # Optional overrides (sane safe defaults below). Raise these DELIBERATELY for
+#   # a known-heavy read, ideally inline for one call: CH_MAX_BYTES=... ./chq.sh ...
+#   export CH_MAX_MEM=$((20*1024*1024*1024))         # 20 GiB per-query memory cap
+#   export CH_MAX_TIME=30                            # wall-clock seconds
 #   export CH_MAX_ROWS=$((200*1000*1000))            # max rows to read
+#   export CH_MAX_BYTES=$((100*1000*1000*1000))      # max bytes to read (raise for
+#                                                   # clusterAllReplicas fan-out)
+#   export CH_MAX_EST_TIME=60                        # reject doomed queries upfront
+#   export CH_MAX_RESULT_ROWS=100000                 # cap rows returned
+#   export CH_MAX_THREADS=4                          # threads per query
 #   export CH_READONLY=1                             # ONLY if connecting with a
 #                                                   # read-write account (see below)
+#
+# Fan-out caution: a `clusterAllReplicas(...)` / `cluster(...)` scan reads from
+# EVERY node, so the bytes/rows scanned multiply by the node count. Narrow the
+# time window FIRST; only then raise CH_MAX_BYTES for that specific call.
 #
 # The connecting user SHOULD be a read-only account — that is the real write
 # guardrail. If it already is (a readonly=1 or readonly=2 profile), do NOT set
