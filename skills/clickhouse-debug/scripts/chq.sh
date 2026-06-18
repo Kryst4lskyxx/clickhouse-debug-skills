@@ -10,10 +10,28 @@
 #   export CH_URL='http://chnode.example.com:8123'   # or https://...:8443
 #   export CH_USER='readonly_user'
 #   export CH_PASS='...'                             # optional
-#   # Optional overrides (sane safe defaults below):
-#   export CH_MAX_MEM=$((20*1024*1024*1024))         # 20 GiB per-query cap
-#   export CH_MAX_TIME=30                            # seconds
+#   # Optional overrides (sane safe defaults below). Raise these DELIBERATELY for
+#   # a known-heavy read, ideally inline for one call: CH_MAX_BYTES=... ./chq.sh ...
+#   export CH_MAX_MEM=$((20*1024*1024*1024))         # 20 GiB per-query memory cap
+#   export CH_MAX_TIME=30                            # wall-clock seconds
 #   export CH_MAX_ROWS=$((200*1000*1000))            # max rows to read
+#   export CH_MAX_BYTES=$((100*1000*1000*1000))      # max bytes to read (raise for
+#                                                   # clusterAllReplicas fan-out)
+#   export CH_MAX_EST_TIME=60                        # reject doomed queries upfront
+#   export CH_MAX_RESULT_ROWS=100000                 # cap rows returned
+#   export CH_MAX_THREADS=4                          # threads per query
+#   export CH_READONLY=1                             # ONLY if connecting with a
+#                                                   # read-write account (see below)
+#
+# Fan-out caution: a `clusterAllReplicas(...)` / `cluster(...)` scan reads from
+# EVERY node, so the bytes/rows scanned multiply by the node count. Narrow the
+# time window FIRST; only then raise CH_MAX_BYTES for that specific call.
+#
+# The connecting user SHOULD be a read-only account — that is the real write
+# guardrail. If it already is (a readonly=1 or readonly=2 profile), do NOT set
+# CH_READONLY: ClickHouse rejects changing the `readonly` setting in readonly
+# mode (READONLY / code 164), even to the same value. Set CH_READONLY=1 only
+# when you must connect with a read-write user and want client-side protection.
 #
 # Usage:
 #   ./chq.sh "SELECT count() FROM system.parts"
@@ -41,26 +59,53 @@ CH_MAX_EST_TIME="${CH_MAX_EST_TIME:-60}"             # reject queries projected 
 CH_MAX_RESULT_ROWS="${CH_MAX_RESULT_ROWS:-100000}"   # cap rows returned
 CH_MAX_THREADS="${CH_MAX_THREADS:-4}"                # don't fan out wide
 
+# Resolve the SQL. Order matters: prefer an explicit arg/-f over stdin. We must
+# NOT gate on `[ -t 0 ]` — when this runs under an agent/CI Bash tool stdin is
+# not a TTY, so that check would wrongly ignore the SQL argument and read an
+# empty query from stdin. Only fall back to stdin when no SQL arg was given.
 if [ "${1:-}" = "-f" ]; then
   sql="$(cat "${2:?-f needs a file}")"
-elif [ -t 0 ]; then
-  sql="${1:?provide SQL as arg, via -f FILE, or on stdin}"
+elif [ "$#" -gt 0 ]; then
+  sql="$1"
 else
   sql="$(cat)"
 fi
+: "${sql:?provide SQL as arg, via -f FILE, or on stdin}"
 
 auth=(-u "${CH_USER}:${CH_PASS}")
 
-curl -sk -m "$((CH_MAX_TIME + 10))" "${auth[@]}" "$CH_URL/" \
-  --data-urlencode "max_memory_usage=${CH_MAX_MEM}" \
-  --data-urlencode "max_execution_time=${CH_MAX_TIME}" \
-  --data-urlencode "timeout_before_checking_execution_speed=0" \
-  --data-urlencode "max_estimated_execution_time=${CH_MAX_EST_TIME}" \
-  --data-urlencode "max_rows_to_read=${CH_MAX_ROWS}" \
-  --data-urlencode "max_bytes_to_read=${CH_MAX_BYTES}" \
-  --data-urlencode "max_result_rows=${CH_MAX_RESULT_ROWS}" \
-  --data-urlencode "result_overflow_mode=break" \
-  --data-urlencode "max_threads=${CH_MAX_THREADS}" \
-  --data-urlencode "readonly=1" \
-  --data-urlencode "default_format=TabSeparatedWithNames" \
+# Resource caps applied to every query — exactly the `agent-query-safety`
+# settings. Built as an array so `readonly` can be appended conditionally.
+settings=(
+  --data-urlencode "max_memory_usage=${CH_MAX_MEM}"
+  --data-urlencode "max_execution_time=${CH_MAX_TIME}"
+  --data-urlencode "timeout_before_checking_execution_speed=0"
+  --data-urlencode "max_estimated_execution_time=${CH_MAX_EST_TIME}"
+  --data-urlencode "max_rows_to_read=${CH_MAX_ROWS}"
+  --data-urlencode "max_bytes_to_read=${CH_MAX_BYTES}"
+  --data-urlencode "max_result_rows=${CH_MAX_RESULT_ROWS}"
+  --data-urlencode "result_overflow_mode=break"
+  # result_overflow_mode=break is incompatible with the query cache
+  # (QUERY_CACHE_USED_WITH_NON_THROW_OVERFLOW_MODE / code 731 on clusters that
+  # enable it by default). Debug probes want fresh reads anyway, so disable it.
+  --data-urlencode "use_query_cache=0"
+  --data-urlencode "max_threads=${CH_MAX_THREADS}"
+  --data-urlencode "default_format=TabSeparatedWithNames"
+)
+
+# readonly is opt-in. The connecting user should already be a read-only account
+# (that is the real guardrail). For such a user, sending any `readonly` value
+# fails with "Cannot modify 'readonly' setting in readonly mode" (code 164), so
+# we only send it when CH_READONLY is explicitly set — and LAST, because once
+# readonly takes effect no further settings can be changed.
+if [ -n "${CH_READONLY:-}" ]; then
+  settings+=(--data-urlencode "readonly=${CH_READONLY}")
+fi
+
+# -G is critical: it forces every --data-urlencode field into the URL query
+# string. ClickHouse reads settings (and the query) ONLY from URL params; the
+# POST body is treated as raw SQL. Without -G these fields land in the body and
+# ClickHouse tries to parse `max_memory_usage=...&...` as a query (SYNTAX_ERROR).
+curl -sk -m "$((CH_MAX_TIME + 10))" "${auth[@]}" -G "$CH_URL/" \
+  "${settings[@]}" \
   --data-urlencode "query=${sql}"

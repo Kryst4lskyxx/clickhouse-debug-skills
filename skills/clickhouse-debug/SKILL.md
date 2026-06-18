@@ -104,8 +104,13 @@ Non-negotiable rules:
   `timeout_before_checking_execution_speed=0` so it's a true wall clock),
   `max_estimated_execution_time` (rejects doomed queries before they start),
   `max_rows_to_read`, `max_bytes_to_read`, `max_result_rows`, `max_threads`, and
-  `readonly=1` on every call — exactly the `agent-query-safety` settings. Don't
-  hand-roll bare `curl` to the cluster unless you replicate those caps.
+  `use_query_cache=0` on every call — exactly the `agent-query-safety` settings.
+  Don't hand-roll bare `curl` to the cluster unless you replicate those caps.
+- **Connect with a read-only account** — that's the real write guardrail. The
+  wrapper does NOT send `readonly=1` by default, because a properly read-only
+  user (a `readonly=1`/`readonly=2` profile) rejects it with
+  `Cannot modify 'readonly' setting in readonly mode` (code 164). Only set
+  `CH_READONLY=1` if you must connect with a read-write account.
 - **Filter `system.*` log tables by time first, in a subquery, before any join
   or heavy aggregation.** `query_log`, `metric_log`, `asynchronous_metric_log`,
   `trace_log`, `part_log` are huge. `WHERE event_time > now() - INTERVAL 10 MINUTE`
@@ -122,7 +127,20 @@ Non-negotiable rules:
   expensive aggregation.
 
 If you ever need a heavier query, narrow the time window and raise caps
-*deliberately* (`CH_MAX_MEM=...`), and tell the user what you're doing and why.
+*deliberately* — inline for the one call so the default stays safe — and tell
+the user what you're doing and why:
+
+```bash
+# one heavy read, defaults restored on the next call
+CH_MAX_BYTES=$((500*1000*1000*1000)) CH_MAX_TIME=60 ./chq.sh "SELECT ..."
+```
+
+Every cap is overridable this way: `CH_MAX_MEM`, `CH_MAX_TIME`, `CH_MAX_ROWS`,
+`CH_MAX_BYTES`, `CH_MAX_EST_TIME`, `CH_MAX_RESULT_ROWS`, `CH_MAX_THREADS`.
+**Fan-out multiplies the scan:** a `clusterAllReplicas(...)` query reads from
+every node, so bytes/rows scanned scale with node count — a 100 GB cap that's
+fine on one node trips `Code: 307 ... Limit for bytes to read exceeded` across
+60+ nodes. Narrow the time window first, then raise `CH_MAX_BYTES` for that call.
 
 ## Setup (once per session)
 
@@ -139,6 +157,26 @@ export CH_USER='readonly_user'; export CH_PASS='...'   # read-only creds
 
 Internal CAs + sandboxed egress: run the Bash tool with
 `dangerouslyDisableSandbox: true` for these calls (curl already uses `-k`).
+
+### Single node vs. proxy-fronted fleet
+
+`CH_URL` may point at one node **or** at a load balancer / proxy (e.g. chproxy)
+in front of dozens of nodes. Find out which early — it changes how you read
+`system.*`:
+
+- **Each call may hit a different backend.** A bare `system.query_log` /
+  `system.parts` query lands on whichever node the proxy picked, so results are
+  non-deterministic and node-local. For any fleet-wide or per-node view, wrap the
+  table in `clusterAllReplicas(<cluster>, system.<table>)` and select
+  `hostName()` so you know which node each row came from. Get the cluster name
+  from `SELECT cluster, count() FROM system.clusters GROUP BY cluster`.
+- **Confirm the spread first:** `SELECT hostName(), version(), uptime() FROM
+  clusterAllReplicas(<cluster>, system.one)` tells you the node count and whether
+  versions/uptimes are uniform.
+- **Proxy quirks `chq.sh` already handles:** settings must ride in the URL (not
+  the POST body), the `query` cache is often on by default (the wrapper sends
+  `use_query_cache=0`), and the proxy user is typically read-only (so no
+  `readonly=1`). Don't hand-roll `curl` against a proxy without replicating these.
 
 ## The triage workflow
 

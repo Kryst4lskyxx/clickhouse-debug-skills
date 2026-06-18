@@ -14,6 +14,14 @@ discover it first if unknown:
 ./promq.sh 'up{cluster="OLAP-FOO-ClickHouse"}'  # then scope to yours
 ```
 
+To find a **metric name** when you only know a fragment, match server-side with
+a `__name__` regex — don't fetch `/api/v1/label/__name__/values`, which returns
+the entire catalog as one multi-hundred-KB line that chokes `jq`:
+
+```bash
+./promq.sh 'group by (__name__) ({__name__=~"ClickHouse.*Memory.*"})'  # names only
+```
+
 There are two metric families:
 - **`node_*`** — node_exporter (the host OS). Present on bare metal; on k8s you
   instead lean on `container_*` (cadvisor) and `kube_*` (kube-state-metrics).
