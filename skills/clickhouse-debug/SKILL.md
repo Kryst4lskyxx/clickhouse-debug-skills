@@ -17,7 +17,7 @@ description: >-
 license: Apache-2.0
 metadata:
   author: Ye Yuan
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # ClickHouse cluster & query debugging
