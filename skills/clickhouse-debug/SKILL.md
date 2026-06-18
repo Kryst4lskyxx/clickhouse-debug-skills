@@ -17,7 +17,7 @@ description: >-
 license: Apache-2.0
 metadata:
   author: Ye Yuan
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # ClickHouse cluster & query debugging
@@ -34,32 +34,59 @@ The work is read-only by construction. You never mutate the cluster. The one way
 a *read* can still hurt a production node is by consuming too much memory/CPU —
 so resource safety below is not optional.
 
-## Companion skills (the official ClickHouse skills — required)
+## Companion skills (install these first)
 
-This skill owns the *diagnosis* (what's wrong, why, where in the source). It
-deliberately does **not** re-derive ClickHouse's schema/query/insert guidance —
-that lives in the official **`clickhouse-best-practices`** skill (and its
-companion `clickhouse-architecture-advisor`), which is the canonical, versioned
-source of truth maintained by ClickHouse Inc. Lean on it in two places:
+This skill owns the *diagnosis* — what's wrong, why, and where in the matched
+source. It leans on three companion suites for everything *around* that diagnosis.
+Install all three before a real investigation:
+
+```bash
+npx skills add clickhouse/agent-skills                                 # Fix canon (best-practices)
+npx skills add Altinity/altinity-skills/altinity-expert-clickhouse/    # deeper system.* playbooks
+npx skills add Altinity/altinity-skills/altinity-profiler-clickhouse/  # per-cluster schema map
+```
+
+**1. `clickhouse-best-practices` (+ `clickhouse-architecture-advisor`) — the Fix
+canon.** The canonical, versioned remedy rules maintained by ClickHouse Inc. This
+skill does **not** re-derive schema/query/insert guidance. Lean on it in two places:
 
 - **Resource safety** — the rule `agent-query-safety` is the authority for query
   caps; `scripts/chq.sh` implements it. (Also `agent-connect-mcp`,
   `agent-discovery-schema` for connection and schema discovery.)
 - **The Fix stage** — when a fix touches schema, query shape, or ingestion,
-  invoke `clickhouse-best-practices` (via the Skill tool) and **cite the specific
-  rule** rather than improvising. Mapping in the Fix section below.
+  invoke it (via the Skill tool) and **cite the specific rule** rather than
+  improvising. Mapping in the Fix section below.
 
-**If the official skills are not installed**, tell the user to install them
-before going further (one line, then continue once available):
+**2. `altinity-expert-clickhouse-*` — diagnosis depth (a suite of domain
+specialists).** Per-domain `system.*` playbooks (caches, dictionaries, kafka,
+mutations, grants, index-analysis, ingestion, reporting, schema, storage, metrics,
+part-log, logs, security, …), each shipping ready-made SQL. This skill's own
+`references/query-state.md` covers the common incident signatures *with source
+confirmation*; route into a specialist when the symptom lands in a domain those
+references don't drill. The symptom→specialist table is in the Inside-stage section
+below. `altinity-expert-clickhouse-overview` is their entry point (health snapshot +
+routing) when you don't yet know the domain.
 
-```bash
-npx skills add ClickHouse/clickhouse-agent-skills
-```
+> **Caps don't travel with their SQL.** The altinity specialists assume an
+> *uncapped* MCP / `clickhouse-client` session (`event_date >= today() - 1`,
+> `LIMIT 100`, no per-query memory/time/bytes cap). When you borrow one of their
+> queries, run it through `chq.sh` (which injects the `agent-query-safety` caps) and
+> wrap the table in `clusterAllReplicas(<cluster>, …)` if you're proxy-fronted —
+> don't fire it raw at a production node.
 
-You can detect their presence by checking whether `clickhouse-best-practices`
-appears in your available skills. If it's genuinely unavailable and the user
-can't install it now, proceed but say so — your fix recommendations will be
-uncited general guidance rather than rule-backed.
+**3. `altinity-profiler-clickhouse` — the cluster map (optional, for the Frame
+stage).** Generates a per-cluster `<cluster>-analyst` knowledge base (tables,
+engines, ORDER BY keys, join map, tenancy, aggregation idioms). It is **not** a live
+debugger — but when a diagnosis hinges on schema you don't have memorized ("what
+engine is this table, is `FINAL` the read idiom, which column prunes the index"),
+load an existing `<cluster>-analyst` skill, or offer to run the profiler once while
+the cluster is calm.
+
+**Detecting them:** check your available skills for `clickhouse-best-practices`,
+`altinity-expert-clickhouse-overview`, and `altinity-profiler-clickhouse`. If a
+suite is genuinely unavailable and the user can't install it now, proceed but **say
+so** — your fixes will be uncited general guidance, and your `system.*` drilling will
+be limited to this skill's own references.
 
 ## Before you touch anything: gather inputs
 
@@ -195,19 +222,59 @@ buries the signal and burns the cluster.
 5. Report     Live narration of what each step ruled in/out, then an RCA writeup.
 ```
 
-The two reference files are the deep playbooks. Read the one the symptom points
-to; you usually need both because real incidents cross the boundary (a node shows
-down in Prometheus → you drill into `query_log` to find the query that killed it).
+The three reference files are the deep playbooks — one per stage (Outside →
+Inside → Confirm). Read the one the symptom points to; you usually need more than
+one because real incidents cross the boundary (a node shows down in Prometheus →
+you drill into `query_log` to find the query that killed it → you confirm the throw
+site in the source).
 
-- **`references/cluster-state.md`** — Prometheus playbook. Node/pod up-ness,
-  OOM, CPU/iowait/load, memory, disk (incl. SATA-vs-NVMe hardware tiers),
+- **`references/cluster-state.md`** — Outside / Prometheus playbook. Node/pod
+  up-ness, OOM, CPU/iowait/load, memory, disk (incl. SATA-vs-NVMe hardware tiers),
   network, `ClickHouseProfileEvents_*` / `Metrics_*` / `AsyncMetrics_*`,
   and the bare-metal vs Kubernetes differences (exit codes, OOMKilled, restart
   counts, cgroup limits).
-- **`references/query-state.md`** — `system.*` playbook. `query_log` forensics
-  and attribution (who ran it, from where), `errors`, `parts` / part pile-ups,
-  `merges` / `part_log` (failing-merge storms), `replicas` / replication lag,
-  `processes` (live queries), thread-pool and FD exhaustion.
+- **`references/query-state.md`** — Inside / `system.*` playbook. `query_log`
+  forensics and attribution (who ran it, from where), `errors`, `parts` / part
+  pile-ups, `merges` / `part_log` (failing-merge storms), `replicas` / replication
+  lag, `processes` (live queries), thread-pool and FD exhaustion.
+- **`references/source-map.md`** — Confirm / source-tree playbook. Where error
+  codes, ProfileEvents/metrics, settings, and `system.*` columns live in the tree;
+  grep patterns for throw sites; the version-match check; and worked examples for
+  the codes this skill names. This is the differentiator — read it whenever you're
+  about to assert a mechanism.
+
+### Routing into the altinity specialists (deeper system.* playbooks)
+
+`references/query-state.md` is the source-confirmed core. When the symptom is in a
+domain it doesn't drill (or you want a second, ready-made query set), invoke the
+matching `altinity-expert-clickhouse-*` specialist via the Skill tool — then run any
+SQL you adopt through `chq.sh` (caps + `clusterAllReplicas`, per the caveat above),
+since the specialists assume an uncapped session.
+
+| Symptom / finding | Specialist |
+|---|---|
+| Don't know where to start — want a health snapshot | `altinity-expert-clickhouse-overview` |
+| Cache hit-ratio / mark / uncompressed / query cache | `altinity-expert-clickhouse-caches` |
+| Dictionary load failure / high dictionary memory | `altinity-expert-clickhouse-dictionaries` |
+| Kafka engine lag / consumer errors / thread starvation | `altinity-expert-clickhouse-kafka` |
+| Stuck or slow mutations (`ALTER UPDATE/DELETE`) | `altinity-expert-clickhouse-mutations` |
+| `ACCESS_DENIED` / `AUTHENTICATION_FAILED` / grants after upgrade | `altinity-expert-clickhouse-grants` |
+| Scans larger than expected / ORDER BY / skip-index effectiveness | `altinity-expert-clickhouse-index-analysis` |
+| Slow `INSERT` / high part-creation rate / batch sizing | `altinity-expert-clickhouse-ingestion` |
+| Slow `SELECT` latency / query-pattern analysis | `altinity-expert-clickhouse-reporting` |
+| Partitioning / ORDER BY / materialized-view anti-patterns | `altinity-expert-clickhouse-schema` |
+| Disk usage / compression / part sizes / slow IO | `altinity-expert-clickhouse-storage` |
+| `part_log` forensics (micro-batch, merge backlog, znode growth) | `altinity-expert-clickhouse-part-log` |
+| Load / connection saturation / queue buildup (live metrics) | `altinity-expert-clickhouse-metrics` |
+| System-log TTL / unbounded log growth | `altinity-expert-clickhouse-logs` |
+| Security-posture audit (users, grants, exposure) | `altinity-expert-clickhouse-security` |
+
+Overlap, on purpose: **memory, merges, and replication** have both a specialist
+*and* a source-confirmed section in `references/`. For those, lead with this skill's
+references (they tie the symptom to a `file:line` in the matched tree) and pull the
+specialist in for extra SQL or domain breadth. Whatever you route to, the value this
+skill keeps is the same: Prometheus correlation, resource-capped HTTP probes, and
+confirming the mechanism against the source you're standing in.
 
 ## Confirming against the source (the "matched version" step)
 
@@ -228,6 +295,12 @@ it:
 
 Cite `file:line` in the writeup. If the source contradicts your hypothesis,
 believe the source.
+
+The full navigation playbook — where each of these lives in the tree, the grep
+patterns, the version-match check, and worked examples for the codes this skill
+names — is **`references/source-map.md`**. Read it before asserting any mechanism;
+confirming against the matched source is this skill's one irreplaceable step now
+that diagnosis depth and remedies are delegated to the companion skills.
 
 ## The Fix stage: route through clickhouse-best-practices
 
