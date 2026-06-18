@@ -8,6 +8,38 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.1.1] - 2026-06-18
+
+Wrapper fixes from a real chproxy-fronted production debugging session, plus
+docs for the proxy/fleet realities it surfaced. No methodology changes.
+
+### Fixed
+- **`chq.sh` passed settings in the POST body**, which ClickHouse/chproxy parse
+  as raw SQL → `Code: 62 ... Syntax error at position 29 (&)`. Settings now ride
+  in the URL query string via `curl -G`.
+- **`chq.sh` unconditionally sent `readonly=1`**, which a read-only account
+  rejects → `Code: 164 ... Cannot modify 'readonly' setting in readonly mode`.
+  `readonly` is now opt-in via `CH_READONLY` (default off); the connecting
+  read-only account is the real guardrail.
+- **`result_overflow_mode=break` collided with the query cache** when a cluster
+  enables it by default → `Code: 731 ... use_query_cache and overflow_mode !=
+  'throw' cannot be used together`. The wrapper now always sends
+  `use_query_cache=0`.
+- **`chq.sh` arg parsing assumed a TTY** (`[ -t 0 ]`), so under an agent/CI Bash
+  tool it ignored the SQL argument and read an empty query from stdin →
+  `Code: 62 ... Empty query`. It now prefers `$1`/`-f` and falls back to stdin.
+
+### Added
+- **Heavy-read override path** documented (inline per-call cap overrides) with a
+  fan-out caution: `clusterAllReplicas()` multiplies bytes/rows scanned by node
+  count (`Code: 307 ... Limit for bytes to read exceeded`).
+- **"Single node vs. proxy-fronted fleet" guidance** in `SKILL.md`:
+  `query_log`/`parts` land on a random backend through a proxy, so use
+  `clusterAllReplicas()` + `hostName()` for fleet/per-node views.
+- **Metric-name discovery** tip in `references/cluster-state.md`: match with a
+  `__name__` regex through `promq.sh` instead of dumping
+  `/api/v1/label/__name__/values` (one huge line that breaks `jq`).
+
 ## [0.1.0] - 2026-06-17
 
 Initial public release.
