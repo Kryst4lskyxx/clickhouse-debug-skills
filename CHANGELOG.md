@@ -8,6 +8,54 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.2.0] - 2026-06-18
+
+Harden the skill against the friction surfaced by a real large-fleet,
+chproxy-fronted investigation: fleet-scale resource caps, silent metric NAs, transient
+connectivity, shell-state loss across agent Bash calls, and config contamination
+from the wrapper's own caps. Scripts gain self-diagnosing behavior; the references
+gain the two recipes that incident most wanted.
+
+### Added
+- **`chq.sh` cap-trip hints.** When a safety cap aborts a query, the wrapper now
+  prints a one-line stderr hint naming the exact knob to raise (`max_rows_to_read`
+  → `CH_MAX_ROWS`, and likewise for bytes/time/estimated-time/memory) and reminds
+  that `clusterAllReplicas` fan-out multiplies the scan — so the next call narrows
+  the window instead of re-guessing.
+- **Transient-failure retry in both scripts.** `chq.sh` and `promq.sh` retry once
+  on a transient curl failure (DNS/connect/TLS reset), so a sandbox/resolver
+  hiccup (curl exit 6/7) no longer costs a round-trip or reads as an outage.
+- **`promq.sh` empty-result + error detection.** Distinguishes `0 series` (a
+  wrong/absent metric name — the classic silent NA) from a real value of 0, prints
+  a discovery hint, surfaces Prometheus in-band query errors, and no longer crashes
+  `jq` on an empty/non-JSON body (the cause of tracebacks inside snapshot loops).
+- **Fleet-aware cap recipe** in `SKILL.md`: discover node count, narrow the window
+  first, then scale `CH_MAX_ROWS`/`CH_MAX_BYTES` to the fleet — with a worked
+  6h-across-the-fleet `query_log` example. The default `1e9` row cap is sized for
+  one node and trips immediately on a large `clusterAllReplicas` scan (`Code: 158`).
+- **Per-node iowait + disk-straggler recipe** in `references/cluster-state.md`:
+  the `avg by (instance)` per-core iowait fraction that actually works on bare
+  metal, `max by (instance)` to collapse per-device disk metrics to one number per
+  node, a note that `ClickHouseProfileEvents_OSIOWaitMicroseconds` / `LoadAverage1`
+  often don't discriminate, and the latency-profile proxy (healthy p50 / fat p999
+  on slow media) as the fallback disk-straggler signal.
+- **Per-node latency-profile query** in `references/query-state.md`
+  (p50/p99/p999 by `hostName()` over `clusterAllReplicas`) — the inside-view side
+  of the disk-straggler proxy, cross-linked from the Prometheus playbook.
+- **Shell-persistence guidance** in `SKILL.md`: exported vars do **not** survive
+  between agent Bash calls (only the working directory does), so the Setup step now
+  writes a gitignored `.chenv` and `source`s it per call. `.chenv` added to
+  `.gitignore` (it holds the CH password).
+
+### Changed
+- **Cap-contamination warning.** The wrapper's caps (`max_threads`,
+  `max_memory_usage`, …) appear in `system.query_log.Settings` of every probe;
+  `SKILL.md`, `references/query-state.md`, and the `chq.sh` header now warn against
+  reading those back as production config (read `system.settings` instead). A past
+  memory note had recorded the wrapper's `max_threads=4` cap as the real value.
+- **README** helper descriptions updated for the new script behavior; dropped the
+  stale `readonly=1` mention (the wrapper no longer sends it by default).
+
 ## [0.1.2] - 2026-06-18
 
 Integrate the Altinity companion skills and deepen the source-confirmation step

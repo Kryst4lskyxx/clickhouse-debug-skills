@@ -56,6 +56,32 @@ while real RSS hit hundreds — untracked allocations (cross-joins) overshoot th
 tracker, so a modest top entry doesn't exonerate a query whose *shape* is
 dangerous (range-JOIN, huge GROUP BY, `arrayJoin` blowup).
 
+## Per-node latency profile (the disk-straggler proxy)
+
+When Prometheus can't hand you a clean per-node iowait number (see
+`references/cluster-state.md` step 3), the latency *shape* per node is the next
+best disk-straggler evidence. A node on slow media shows a healthy p50 but a fat
+p999 — cache-missing reads pay the slow-disk penalty on the tail:
+
+```sql
+SELECT hostName() AS node, count() AS queries,
+       quantile(0.50)(query_duration_ms)  AS p50,
+       quantile(0.99)(query_duration_ms)  AS p99,
+       quantile(0.999)(query_duration_ms) AS p999
+FROM clusterAllReplicas(<cluster>, system.query_log)
+WHERE event_time > now() - INTERVAL 1 HOUR    -- innermost filter; widen carefully
+  AND type = 'QueryFinish'
+GROUP BY node
+ORDER BY p999 DESC
+LIMIT 30
+```
+
+This scans `query_log` on every node — classic fan-out. If it trips
+`Code: 158`, narrow the window and raise `CH_MAX_ROWS` for that one call (the
+fleet-aware recipe in `SKILL.md`). Nodes that cluster at a high p999 while their
+p50 sits with the pack are the stragglers; confirm the media with
+`node_disk_info` model strings.
+
 ## Attribution: who ran it, from where
 
 When you need to name the source of a query:
@@ -195,3 +221,15 @@ WHERE name IN ('max_memory_usage','max_memory_usage_for_user',
 A `max_memory_usage = 0` (no per-query cap) on an interactive/default profile is
 the precondition that lets one query OOM a node — the single highest-value fix is
 usually setting it.
+
+**Read config from `system.settings`, not from `query_log.Settings` of your own
+probes.** Every query `chq.sh` runs carries the wrapper's safety caps
+(`max_threads=4`, `max_memory_usage=...`, `max_rows_to_read=...`, etc.), and those
+land in that query's `system.query_log.Settings` map. If you inspect
+`query_log.Settings` and read those back as production config, you'll misreport the
+cluster's real values — a past memory note wrongly recorded `max_threads=4` that
+was only the wrapper's `CH_MAX_THREADS` cap leaking through (production was 10,
+unchanged). The query above (`SELECT ... FROM system.settings`) reflects the live
+profile and is the correct source. If you must read `query_log.Settings`, scope it
+to a **real application `query_id`** (not one this skill issued) before trusting
+the numbers.
