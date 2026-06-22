@@ -17,7 +17,7 @@ description: >-
 license: Apache-2.0
 metadata:
   author: Ye Yuan
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # ClickHouse cluster & query debugging
@@ -276,6 +276,31 @@ buries the signal and burns the cluster.
               metric -> what increments it). Don't assert a cause you can't point at.
 5. Report     Live narration of what each step ruled in/out, then an RCA writeup.
 ```
+
+**Cross-validate before you conclude a rate.** Outside and Inside are not a relay
+where each view is authoritative in turn — they are two instruments that must
+agree before you trust a number. Any throughput / rate / lag claim needs **two
+independent views that agree.** If an external metric and an internal counter
+disagree (they routinely do — a consumer-offset gauge vs `part_log` rows-written
+diverged 2–6× in one incident), don't average them and don't pick the convenient
+one. Resolve to ground truth, in order:
+
+1. **`part_log` rows actually written** (or `query_log.written_rows`) — the rows
+   that truly landed. This wins every disagreement.
+2. **An internal `system.*` counter / `ProfileEvent`** — second, but verify the
+   name exists *and* covers your path (the Kafka background-insert counters badly
+   undercount; see query-state).
+3. **The external Prometheus gauge / consumer-offset** — last. It's sampled, can
+   lag, and on short from-earliest windows fakes plateaus and overstates ~2×.
+
+A Prometheus series that *looks* authoritative is the classic trap — confirm it
+against the inside view before you build any conclusion on it.
+
+**Align clocks before you align windows.** Prometheus returns Unix epochs; your
+shell renders them in its local TZ; the server's `now()` is its own TZ (usually
+UTC). Establish the offset between all three up front (`./chq.sh "SELECT now(),
+timezone()"` vs `date -u` vs a known Prometheus point) so a window you carry from
+one view to another lands on the same wall-clock second.
 
 The three reference files are the deep playbooks — one per stage (Outside →
 Inside → Confirm). Read the one the symptom points to; you usually need more than

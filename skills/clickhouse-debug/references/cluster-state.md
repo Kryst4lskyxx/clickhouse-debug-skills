@@ -14,6 +14,20 @@ discover it first if unknown:
 ./promq.sh 'up{cluster="example-clickhouse"}'  # then scope to yours
 ```
 
+**Verify the target is actually scraped by *this* Prometheus before mapping its
+labels.** A fleet often runs several Prometheis (per-k8s-cluster, per-DC); the
+node you care about can simply be absent from the one you were pointed at, and
+no label scheme will conjure it. Confirm it exists here first:
+
+```bash
+./promq.sh 'up{instance=~".*<node-or-ip>.*"}'   # any series back = it's scraped here
+./promq.sh 'count(up{cluster="..."})'            # sanity: target count for this cluster
+```
+
+0 series for a node you *know* is alive means **wrong Prometheus, not a down
+node** — go find the Prometheus that scrapes it instead of burning probes mapping
+nodename → IP → subnet in the wrong one.
+
 To find a **metric name** when you only know a fragment, match server-side with
 a `__name__` regex — don't fetch `/api/v1/label/__name__/values`, which returns
 the entire catalog as one multi-hundred-KB line that chokes `jq`:
@@ -181,6 +195,14 @@ Gauges:
 - `ClickHouseMetrics_ReplicasMaxQueueSize`, `_ReadonlyReplica` — replication health.
 - `ClickHouseMetrics_GlobalThread`, `_GlobalThreadActive` vs the pool limit, and
   `ClickHouseMetrics_OpenFileForRead` vs the FD limit — exhaustion approaching.
+
+**A metric name usually lives in exactly one family — don't assume one table holds
+everything.** Load/CPU async-sample under `ClickHouseAsyncMetrics_*`, but pool
+gauges like `BackgroundMessageBrokerSchedulePoolTask`/`...Size` are
+`ClickHouseMetrics_*` (CurrentMetric gauges, the `metric_log.CurrentMetric_*`
+columns), **not** async. 0 series in one family ≠ the value is absent — try the
+other family, and confirm which one owns it in source (`CurrentMetrics.cpp` vs
+`AsynchronousMetrics.cpp`, see source-map).
 
 ## Bare metal vs Kubernetes
 
