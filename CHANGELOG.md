@@ -8,6 +8,61 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.3.0] - 2026-06-22
+
+Harden the skill against a real large-fleet Kafka-ingest investigation whose
+costliest miss was trusting one view's rate number: an external Prometheus
+consumer-offset metric was treated as throughput ground truth far too long while
+it faked plateaus and overstated ~2×, disagreeing with `part_log` rows-written by
+2–6×. The headline addition makes external/internal **cross-validation** a rule;
+the rest bakes in the `system.*` and Prometheus gotchas the incident surfaced.
+Documentation/methodology only — no script behavior changes.
+
+### Added
+- **Cross-validation rule + ground-truth hierarchy** in `SKILL.md`: Outside and
+  Inside must *agree* before any throughput/rate/lag claim, not be trusted in
+  relay. When they disagree, resolve in order — `part_log` rows actually written
+  (wins every time) → internal `system.*` counter (verify it exists and covers
+  your path) → external Prometheus gauge/offset (sampled, lags, fakes plateaus).
+- **Clock-alignment habit** in `SKILL.md`: reconcile the timezone offset between
+  Prometheus epochs, your shell, and the server's `now()` before carrying a window
+  from one view to another.
+- **Prometheus-scope check** in `references/cluster-state.md`: verify the target
+  is actually scraped by *this* Prometheus before mapping its labels — a fleet
+  runs several Prometheis and the node may simply be absent (0 series ≠ down node).
+- **Metric-family note** in `references/cluster-state.md`: a name usually lives in
+  exactly one family (`BackgroundMessageBrokerSchedulePoolTask` is a
+  `ClickHouseMetrics_*` CurrentMetric gauge, not `ClickHouseAsyncMetrics_*`);
+  0 series in one family ≠ absent.
+- **"Discover column / ProfileEvent names — never guess"** section in
+  `references/query-state.md`: many expected counters don't exist (there is no
+  Kafka poll-time counter) and a guessed name reads like zero; list real names via
+  `system.columns`/`system.events`/`system.metrics` first. Cross-referenced from
+  `references/source-map.md`.
+- **"Throughput ground truth: part_log rows written"** section in
+  `references/query-state.md`: the `part_log` rows-written recipe as the
+  tiebreaker, with the **Kafka caveat** that `metric_log` Kafka ProfileEvents
+  badly undercount the background-insert path (≈257k seen vs 7.26M written) —
+  prefer `part_log` for volume and `query_views_log` for the insert/MV path (clean
+  insert-concurrency proof: max concurrent inserts = number of consumers).
+- **Shared-resource attribution check** in `references/query-state.md`: confirm
+  the table/metric you measure isn't *also* driven by production on the same node
+  before crediting a number to your test; measure a test-exclusive signal or
+  report the number as contaminated.
+- **`server_settings` vs `settings` for pool sizing** in
+  `references/query-state.md`: read `system.server_settings` for anything that
+  sizes a pool or the server (one cluster showed pool size 16 in the profile while
+  the server ran 32).
+- **"ClickHouse SQL gotchas that cost a retry"** section in
+  `references/query-state.md`: aggregate-alias shadowing, nested aggregates, and
+  `ANY LEFT JOIN` subquery aliasing.
+
+### Changed
+- **`text_log` availability guidance** in `references/query-state.md` now says to
+  check it *early* and names the fallback when it's off: a source-derived
+  conclusion (cite the matched-tree branch), labelled as source-derived rather
+  than log-confirmed.
+
 ## [0.2.0] - 2026-06-18
 
 Harden the skill against the friction surfaced by a real large-fleet,

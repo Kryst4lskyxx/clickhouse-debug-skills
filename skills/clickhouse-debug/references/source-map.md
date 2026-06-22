@@ -46,7 +46,11 @@ instead, grep the format string: `grep -rn "Cannot reschedule" src/`.
 
 ## Metric / event → what actually increments it
 
-A metric only means what its increment site says it means. Don't infer from the name.
+A metric only means what its increment site says it means. Don't infer from the
+name — and confirm the name actually exists in this build *before* you grep, via
+`system.events` / `system.metrics` / `system.columns` (see query-state). Grepping
+a guessed name that doesn't exist in this version (e.g. a Kafka poll-time counter
+that was never added) just wastes the step.
 
 ```bash
 # ProfileEvents (cumulative counters: query_log.ProfileEvents, system.events)

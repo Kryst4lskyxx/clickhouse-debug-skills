@@ -11,11 +11,39 @@ tables (`query_log`, `metric_log`, `trace_log`, `part_log`, `asynchronous_metric
 are enormous; an unfiltered scan is how a debug probe becomes the incident.
 
 A note on availability: some log tables are disabled per-cluster
-(`text_log` often is; `metric_log` may be off). Check before relying on one:
+(`text_log` often is; `metric_log` may be off). Check this **early**, before you
+plan a probe around one:
 `./chq.sh "SELECT name FROM system.tables WHERE database='system' AND name LIKE '%_log'"`.
-And after an OOM the in-memory buffer of `metric_log`/`asynchronous_metric_log`
-is lost (flush thread starved) — `query_log` usually survived because it flushed
-earlier. If pre-crash rows are missing, say so and fall back to OS logs.
+When `text_log` is off and you needed a log line to confirm something (a consumer
+rebalance, a stall, a specific warning), you simply can't log-confirm it — fall
+back to a **source-derived** conclusion (cite the branch/throw in the matched
+tree, see `references/source-map.md`) and label it as source-derived, not
+log-confirmed, in the writeup. And after an OOM the in-memory buffer of
+`metric_log`/`asynchronous_metric_log` is lost (flush thread starved) —
+`query_log` usually survived because it flushed earlier. If pre-crash rows are
+missing, say so and fall back to OS logs.
+
+## Discover column / ProfileEvent names — never guess them
+
+ProfileEvent, metric, and `*_log` column names are version- and build-specific,
+and many you'd expect don't exist (there is **no** Kafka poll-time counter, for
+instance — `KafkaConsumerPollTimeMicroseconds` is not a real column). A guessed
+name returns a silent empty result that reads exactly like "the value is zero".
+List the real names before building any probe on them:
+
+```sql
+-- columns that actually exist in this build's metric_log
+SELECT name FROM system.columns
+WHERE database='system' AND table='metric_log' AND name LIKE 'ProfileEvent_%Kafka%'
+
+-- or the canonical catalogs (cumulative events + live gauges)
+SELECT event  FROM system.events  WHERE event  ILIKE '%kafka%'
+SELECT metric FROM system.metrics WHERE metric ILIKE '%pool%'
+```
+
+Confirm the name exists, then confirm its *meaning* in source (`ProfileEvents.cpp`
+/ `CurrentMetrics.cpp`, see `references/source-map.md`) — a name matching your
+guess still might not increment where you think.
 
 ## Start here: what errors is the server actually raising
 
@@ -106,6 +134,16 @@ Read the fields together:
   minutes is normal shard fan-out, not an attack — concurrency removes headroom
   but rarely *is* the root cause; check summed tracked memory before blaming volume.
 
+**Confirm what you measure isn't also driven by production.** Before you credit a
+`part_log` / `query_views_log` / metric number to the thing you're investigating
+(a test, a specific job, one consumer group), check the target table or metric
+isn't *also* fed by production traffic on the same node — a test consumer group
+writing to a prod-shared target table makes its `part_log` rows un-isolable, and
+you'll credit the test with production's volume. Find a test-exclusive signal — a
+dedicated `_local`/staging table, a distinct `user` or `query_id` prefix, or a
+node only the test hits — and measure *that*. If you can't isolate it, say the
+number is contaminated rather than reporting it as clean.
+
 ## Live queries right now
 
 ```sql
@@ -155,6 +193,30 @@ same merge erroring instantly (`FILE_DOESNT_EXIST` on a `.cmrk2`/`.bin`), is a
 disk). Don't `DROP PARTITION` to "fix" it; that's a band-aid that won't hold
 while the disk is broken. Verify peers are complete (`system.replicas`) and treat
 the hardware.
+
+## Throughput ground truth: part_log rows written
+
+When the question is "how many rows actually moved" — Kafka ingest, MV fan-out,
+insert rate — the metric counters lie and the external offset lies harder. The
+rows that truly landed are in `part_log`, and this is the **tiebreaker whenever a
+metric and a counter disagree** (the ground-truth rule in `SKILL.md`):
+
+```sql
+SELECT toStartOfMinute(event_time) AS m, sum(rows) AS rows_written
+FROM system.part_log
+WHERE event_time > now() - INTERVAL 30 MINUTE
+  AND event_type = 'NewPart'
+  AND database = '...' AND table = '...'      -- and beware shared targets (see attribution)
+GROUP BY m ORDER BY m
+```
+
+**Kafka caveat — the background-insert counters undercount.** `metric_log` Kafka
+ProfileEvents (`KafkaRowsRead`, etc.) badly undercount the background-insert path
+— one incident saw ≈257k reported against 7.26M actually written. Don't rate them
+for throughput. Use `part_log` (rows written) for *volume*, and `query_views_log`
+for the insert/MV path — it also gives a clean insert-concurrency proof (max
+concurrent inserts on the table = number of consumers). For consumer/thread-pool
+health, route to `altinity-expert-clickhouse-kafka`.
 
 ## Replication health
 
@@ -222,6 +284,19 @@ A `max_memory_usage = 0` (no per-query cap) on an interactive/default profile is
 the precondition that lets one query OOM a node — the single highest-value fix is
 usually setting it.
 
+**Pool sizes: trust `system.server_settings`, not `system.settings`.** Server-level
+sizing — `background_message_broker_schedule_pool_size`, `background_pool_size`,
+`max_thread_pool_size`, `max_concurrent_queries` — lives in `server_settings`; the
+same-named row in `system.settings` can carry a *profile* value that disagrees
+(one cluster showed pool size 16 in the profile while the server actually ran 32).
+For anything that sizes a pool or the server, read `server_settings`:
+
+```sql
+SELECT name, value, default, changed
+FROM system.server_settings
+WHERE name LIKE '%pool_size%' OR name LIKE '%thread%' OR name = 'max_concurrent_queries'
+```
+
 **Read config from `system.settings`, not from `query_log.Settings` of your own
 probes.** Every query `chq.sh` runs carries the wrapper's safety caps
 (`max_threads=4`, `max_memory_usage=...`, `max_rows_to_read=...`, etc.), and those
@@ -233,3 +308,17 @@ unchanged). The query above (`SELECT ... FROM system.settings`) reflects the liv
 profile and is the correct source. If you must read `query_log.Settings`, scope it
 to a **real application `query_id`** (not one this skill issued) before trusting
 the numbers.
+
+## ClickHouse SQL gotchas that cost a retry
+
+A few grammar rules bite repeatedly when writing diagnostic SQL — each one is a
+wasted round-trip:
+
+- **An alias can't shadow then reuse an aggregate.** `sum(rows) AS rows` and then
+  referencing `rows` again in the same scope collides (the identifier now means
+  the alias). Alias to a fresh name: `sum(rows) AS rows_written`.
+- **No nested aggregates.** `sum(count())` is rejected — push the inner aggregate
+  into a subquery and aggregate its result in the outer query.
+- **`ANY LEFT JOIN` needs aliased subqueries.** Wrap each side in
+  `(SELECT ...) AS l` / `(SELECT ...) AS r` and join on the alias, rather than
+  joining bare table expressions.
