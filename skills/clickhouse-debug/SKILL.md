@@ -7,17 +7,18 @@ description: >-
   claim against the matched-version source. Use this WHENEVER the user is
   investigating a running ClickHouse cluster: nodes down / flapping / OOM-killed,
   pods crash-looping or OOMKilled, high CPU / iowait / load, merge or part
-  pile-ups (TOO_MANY_PARTS), replication lag, slow or failing queries, error
-  storms (CANNOT_SCHEDULE_TASK, MEMORY_LIMIT_EXCEEDED, TOO_MANY_SIMULTANEOUS_QUERIES,
-  FILE_DOESNT_EXIST), thread-pool exhaustion, FD exhaustion, "why did this node
-  fall over", or "what is this query doing". Trigger even when the user just
+  pile-ups (TOO_MANY_PARTS), replication lag, replicas stuck read-only / lost
+  Keeper (ZooKeeper) sessions / hanging ON CLUSTER DDL, slow or failing queries,
+  error storms (CANNOT_SCHEDULE_TASK, MEMORY_LIMIT_EXCEEDED, KEEPER_EXCEPTION,
+  TOO_MANY_SIMULTANEOUS_QUERIES, FILE_DOESNT_EXIST), thread-pool exhaustion, FD
+  exhaustion, "why did this node fall over", or "what is this query doing". Trigger even when the user just
   pastes an error code, a Prometheus alert, or a node/pod name and asks what's
   wrong. Do NOT use for writing application SQL, schema design, or local
   single-node dev (use clickhouse-best-practices / chdb skills for those).
 license: Apache-2.0
 metadata:
   author: Ye Yuan
-  version: "0.3.0"
+  version: "0.4.0"
 ---
 
 # ClickHouse cluster & query debugging
@@ -116,9 +117,10 @@ a wrong cluster/endpoint is caught before any query hits production.
 
 ## Resource safety (read this — a debug query once OOM-killed a prod node)
 
-A diagnostic query with no memory cap and an accidental cross-join (a range-JOIN
-on `asynchronous_metric_log`) once exhausted RAM and tripped the OS OOM killer on
-a production node. Treat every probe as if it could do that, because it can.
+Any diagnostic query without a memory cap can exhaust RAM and trip the OS OOM
+killer — treat every probe as if it could, because it can. (Observed once: an
+accidental cross-join — a range-JOIN on `asynchronous_metric_log` — did exactly
+that to a production node.)
 
 The canonical rule for this is `agent-query-safety` in the official
 `clickhouse-best-practices` skill — read it if in doubt; the rules below are the
@@ -179,8 +181,10 @@ anything. The fix is **window-first, then scale the cap to the fleet:**
 2. **Narrow the time window hard** — minutes/hours around the incident, not days.
    The window is the cheapest lever; it cuts the scan on every node at once.
 3. **Then raise the relevant cap for that one call,** roughly scaled by node
-   count. A scan that reads ~80M rows/node over the window needs
-   `CH_MAX_ROWS ≈ 80M × nodes` plus headroom:
+   count: size it to (rows-per-node over your window) × node count, plus headroom
+   — measure the per-node rate for your scan rather than assuming a constant.
+   (Observed once: a shard-level `query_log` scan ran ~80M rows/node, needing
+   `CH_MAX_ROWS ≈ 80M × nodes`.)
 
 ```bash
 # 6h shard-level query_log scan across a large (60+ node) fleet, rows cap raised for it
@@ -281,9 +285,9 @@ buries the signal and burns the cluster.
 where each view is authoritative in turn — they are two instruments that must
 agree before you trust a number. Any throughput / rate / lag claim needs **two
 independent views that agree.** If an external metric and an internal counter
-disagree (they routinely do — a consumer-offset gauge vs `part_log` rows-written
-diverged 2–6× in one incident), don't average them and don't pick the convenient
-one. Resolve to ground truth, in order:
+disagree (they routinely do, sometimes by multiples; observed once: a
+consumer-offset gauge vs `part_log` rows-written diverged 2–6×), don't average
+them and don't pick the convenient one. Resolve to ground truth, in order:
 
 1. **`part_log` rows actually written** (or `query_log.written_rows`) — the rows
    that truly landed. This wins every disagreement.
@@ -302,11 +306,12 @@ UTC). Establish the offset between all three up front (`./chq.sh "SELECT now(),
 timezone()"` vs `date -u` vs a known Prometheus point) so a window you carry from
 one view to another lands on the same wall-clock second.
 
-The three reference files are the deep playbooks — one per stage (Outside →
-Inside → Confirm). Read the one the symptom points to; you usually need more than
-one because real incidents cross the boundary (a node shows down in Prometheus →
-you drill into `query_log` to find the query that killed it → you confirm the throw
-site in the source).
+The reference files are the deep playbooks — three by stage (Outside → Inside →
+Confirm) plus one cross-cutting domain file (Keeper / read-only replicas, which
+itself spans all three stages). Read the one the symptom points to; you usually
+need more than one because real incidents cross the boundary (a node shows down in
+Prometheus → you drill into `query_log` to find the query that killed it → you
+confirm the throw site in the source).
 
 - **`references/cluster-state.md`** — Outside / Prometheus playbook. Node/pod
   up-ness, OOM, CPU/iowait/load, memory, disk (incl. SATA-vs-NVMe hardware tiers),
@@ -322,6 +327,13 @@ site in the source).
   grep patterns for throw sites; the version-match check; and worked examples for
   the codes this skill names. This is the differentiator — read it whenever you're
   about to assert a mechanism.
+- **`references/keeper-state.md`** — Keeper / ZooKeeper & read-only-replica
+  playbook (cross-cutting: it walks Outside→Inside→Confirm for one incident
+  family). Read it when replicas are stuck **read-only**, `ON CLUSTER` DDL hangs,
+  `KEEPER_EXCEPTION` storms, replication stalls "on Keeper", or anything **after a
+  Keeper restart**. Covers `system.zookeeper_connection` / `replicas` /
+  `replication_queue` / `distributed_ddl_queue`, the Keeper metric families, the
+  source mechanism for read-only, and the operator-side recovery ladder.
 
 ### Routing into the altinity specialists (deeper system.* playbooks)
 
@@ -344,6 +356,7 @@ since the specialists assume an uncapped session.
 | Slow `SELECT` latency / query-pattern analysis | `altinity-expert-clickhouse-reporting` |
 | Partitioning / ORDER BY / materialized-view anti-patterns | `altinity-expert-clickhouse-schema` |
 | Disk usage / compression / part sizes / slow IO | `altinity-expert-clickhouse-storage` |
+| Replicas read-only / hanging `ON CLUSTER` DDL / `KEEPER_EXCEPTION` / post-Keeper-restart | **lead with `references/keeper-state.md`**, then `altinity-expert-clickhouse-replication` |
 | `part_log` forensics (micro-batch, merge backlog, znode growth) | `altinity-expert-clickhouse-part-log` |
 | Load / connection saturation / queue buildup (live metrics) | `altinity-expert-clickhouse-metrics` |
 | System-log TTL / unbounded log growth | `altinity-expert-clickhouse-logs` |
@@ -434,5 +447,7 @@ OOM, say the in-server evidence is gone and point at OS logs (`dmesg`, `last`,
 ## Capturing what you learn
 
 These incidents recur across a fleet. When a diagnosis lands on a non-obvious
-mechanism (a hardware tier mismatch, a version-specific crash path, a stampede
-pattern), it's worth a memory note so the next instance is minutes not hours.
+mechanism — any cause that wasn't obvious from the symptom (a hardware tier
+mismatch, a version-specific crash path, a stampede pattern, a contaminated
+metric, a missing or mis-owned counter, a lost Keeper session) — it's worth a
+memory note so the next instance is minutes not hours.
