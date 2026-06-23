@@ -56,9 +56,9 @@ LIMIT 30
 ```
 
 `system.errors` is cumulative since start but the cheapest possible orientation —
-it names the failure class before you go looking. `FILE_DOESNT_EXIST` in the tens
-of millions = a dead/corrupt disk, not application error. `TOO_MANY_PARTS` =
-merge backlog. `MEMORY_LIMIT_EXCEEDED` = something hit a cap. `CANNOT_SCHEDULE_TASK`
+it names the failure class before you go looking. A large, runaway `FILE_DOESNT_EXIST`
+count (orders of magnitude above normal) = a dead/corrupt disk, not application
+error (observed once: in the tens of millions). `TOO_MANY_PARTS` = merge backlog. `MEMORY_LIMIT_EXCEEDED` = something hit a cap. `CANNOT_SCHEDULE_TASK`
 = thread creation failed.
 
 ## Finding the culprit query (slow / heavy / OOM)
@@ -186,10 +186,12 @@ is ingestion-shaped — consult `clickhouse-best-practices`: `insert-batch-size`
 `insert-async-small-batches`, and the `schema-partition-*` rules. Cite the rule
 in the writeup.
 
-A partition pinned at exactly `parts_to_throw_insert` (e.g. 3000) for hours, with
-`Merge` launches high but `MergesTimeMilliseconds` ~0 and `part_log` showing the
-same merge erroring instantly (`FILE_DOESNT_EXIST` on a `.cmrk2`/`.bin`), is a
-**failing-merge retry storm** — and the real cause is usually underneath (a dead
+A partition pinned at exactly its `parts_to_throw_insert` value for hours (that
+limit is a per-cluster default — confirm it via `system.server_settings` rather
+than assuming a fixed number; observed once: 3000), with `Merge` launches high but
+`MergesTimeMilliseconds` ~0 and `part_log` showing the same merge erroring
+instantly (`FILE_DOESNT_EXIST` on a `.cmrk2`/`.bin`), is a **failing-merge retry
+storm** — and the real cause is usually underneath (a dead
 disk). Don't `DROP PARTITION` to "fix" it; that's a band-aid that won't hold
 while the disk is broken. Verify peers are complete (`system.replicas`) and treat
 the hardware.
@@ -212,8 +214,8 @@ GROUP BY m ORDER BY m
 
 **Kafka caveat — the background-insert counters undercount.** `metric_log` Kafka
 ProfileEvents (`KafkaRowsRead`, etc.) badly undercount the background-insert path
-— one incident saw ≈257k reported against 7.26M actually written. Don't rate them
-for throughput. Use `part_log` (rows written) for *volume*, and `query_views_log`
+— treat the gap as potentially large, not a fixed fraction (observed once: ≈257k
+reported against 7.26M actually written). Don't rate them for throughput. Use `part_log` (rows written) for *volume*, and `query_views_log`
 for the insert/MV path — it also gives a clean insert-concurrency proof (max
 concurrent inserts on the table = number of consumers). For consumer/thread-pool
 health, route to `altinity-expert-clickhouse-kafka`.
@@ -237,6 +239,15 @@ LIMIT 30
 failing, missing part). A replica re-fetching parts from healthy peers is the
 recovery path after a disk rebuild.
 
+**When the trigger is Keeper itself** — replicas going read-only, `KEEPER_EXCEPTION`
+/ `TABLE_IS_READ_ONLY` / `NO_ZOOKEEPER` in `system.errors`, hanging `ON CLUSTER`
+DDL, or anything after a Keeper restart — this `system.replicas` query is just the
+entry point. Lead with **`references/keeper-state.md`**, which adds
+`system.zookeeper_connection` (per-node session truth), `system.distributed_ddl_queue`
+(hanging DDL), the Keeper metric families, the source mechanism for read-only, and
+the operator-side recovery ladder. Note `SESSION_EXPIRED` is **not** a ClickHouse
+error code (it's `Coordination::ZSESSIONEXPIRED`, surfaced via `KEEPER_EXCEPTION`).
+
 ## Thread-pool and FD exhaustion
 
 ```sql
@@ -258,9 +269,10 @@ ORDER BY event_time
 
 `CANNOT_SCHEDULE_TASK "failed to start the thread"` with `GlobalThread` far below
 its limit is **not** pool saturation — it's the OS transiently refusing `clone()`
-under a one-second admission stampede (`CurrentMetric_Query` jumping from single
-digits to hundreds in one second). The lever is `max_concurrent_queries` (cap the
-stampede), not `max_thread_pool_size`. Confirm against `src/Common/ThreadPool.cpp`
+under a one-second admission stampede: a sharp spike in `CurrentMetric_Query`
+within a single second (observed once: single digits to hundreds in one second).
+The lever is `max_concurrent_queries` (cap the stampede), not
+`max_thread_pool_size`. Confirm against `src/Common/ThreadPool.cpp`
 (the catch around the `std::thread` ctor).
 
 FD exhaustion: open part files (`.bin` + `.cmrk2`, ×2 per column per part, and
@@ -288,7 +300,8 @@ usually setting it.
 sizing — `background_message_broker_schedule_pool_size`, `background_pool_size`,
 `max_thread_pool_size`, `max_concurrent_queries` — lives in `server_settings`; the
 same-named row in `system.settings` can carry a *profile* value that disagrees
-(one cluster showed pool size 16 in the profile while the server actually ran 32).
+with the real server-level size, so always read the server value, not the profile
+one (observed once: pool size 16 in the profile while the server actually ran 32).
 For anything that sizes a pool or the server, read `server_settings`:
 
 ```sql

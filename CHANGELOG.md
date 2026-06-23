@@ -8,6 +8,82 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.4.0] - 2026-06-23
+
+Close the one real coverage gap the v0.3.1 transfer test surfaced: the skill had
+no first-class Keeper/ZooKeeper playbook, so a Keeper-restart read-only incident
+(replicas read-only, hanging `ON CLUSTER` DDL, `KEEPER_EXCEPTION` storms) was
+handled only by the general method with no dedicated `system.*` recipes, no
+read-only recovery guidance, and none of the Keeper error codes in the orientation.
+All new content is source-confirmed against a local checkout at **v25.8.11.66-lts**.
+
+### Added
+- **`references/keeper-state.md`** — a cross-cutting Keeper / ZooKeeper &
+  read-only-replica playbook spanning Outside→Inside→Confirm for one incident
+  family: the core read-only mechanism (a `ReplicatedMergeTree` table goes
+  read-only on lost Keeper session and self-clears on re-init —
+  `ReplicatedMergeTreeRestartingThread.cpp`); the Keeper error family in
+  `system.errors` (`KEEPER_EXCEPTION`, `TABLE_IS_READ_ONLY`, `NO_ZOOKEEPER`,
+  `ALL_CONNECTION_TRIES_FAILED`, `NOT_A_LEADER`, `NO_ACTIVE_REPLICAS`); the inside
+  probes (`system.zookeeper_connection`, `system.replicas`,
+  `system.replication_queue`, `system.distributed_ddl_queue`, and the `path`-bound
+  `system.zookeeper`); the correct Keeper/replication metric families in
+  Prometheus; Keeper four-letter-word health (`mntr`/`ruok`); source anchors; and
+  an **operator-side recovery ladder** (`SYSTEM RESTART/RESTORE/SYNC REPLICA`,
+  recommended not run, since the skill is read-only by construction).
+- **`SESSION_EXPIRED` is not a ClickHouse error code** — taught in
+  `keeper-state.md` and `references/source-map.md`: it's
+  `Coordination::Error::ZSESSIONEXPIRED` surfaced via `KEEPER_EXCEPTION`, so
+  grepping `ErrorCodes.cpp` for it returns nothing.
+- **Integrations:** a routing-table row + reference-list entry + triage note +
+  discovery keywords in `SKILL.md`; a Keeper lead-pointer in the
+  `references/query-state.md` replication section; Keeper source-map rows and a
+  `KEEPER_EXCEPTION`/`TABLE_IS_READ_ONLY` worked example in
+  `references/source-map.md`.
+
+### Fixed
+- **Metric-family prefix bug** in `references/cluster-state.md`:
+  `ReplicasMaxQueueSize` / `ReplicasMaxAbsoluteDelay` are **async** metrics
+  (`ClickHouseAsyncMetrics_`, from `ServerAsynchronousMetrics.cpp`), not
+  `ClickHouseMetrics_` — querying the wrong prefix returns 0 series, which reads
+  as a false zero (the skill's own "a metric lives in one family" rule).
+
+## [0.3.1] - 2026-06-23
+
+Generalization pass. Subagent testing against the current skill (an anchoring
+scenario and an un-anecdoted transfer scenario) showed the transferable method
+spine works, but two wrong-shape issues hurt generality: incident numbers read as
+**thresholds** rather than as one observed instance (an agent anchored on the
+doc's `e.g. 3000` and burned effort instead of confirming the real value), and the
+references skewed toward a few rehearsed incident families (failing-merge /
+dead-disk / SATA-NVMe, Kafka throughput, OOM-culprit, admission-stampede), risking
+misdirection on unrelated incidents. Documentation/methodology only — **no
+numbers removed, no script behavior changes.**
+
+### Changed
+- **Reframed every incident-specific number as a marked illustration** across
+  `SKILL.md`, `references/query-state.md`, and `references/cluster-state.md`: each
+  block now leads with the general rule/mechanism and attaches the case figure as
+  `(observed once: …)`, so the magnitude still teaches without reading as a fixed
+  threshold (`~80M rows/node`, `2–6×` divergence, `≈257k vs 7.26M`, pool size
+  `16 vs 32`, `tens of millions` of `FILE_DOESNT_EXIST`, `~10x` iowait, the
+  query-driven-OOM `MemAvailable` collapse, `1% used` bitmap corruption, the
+  admission-stampede `CurrentMetric_Query` spike).
+- **Relabeled `parts_to_throw_insert` as a per-cluster default to confirm** (via
+  `system.server_settings`), not a fixed `3000`/`300` — in `references/query-state.md`,
+  `references/cluster-state.md`, and `references/source-map.md`. This was the
+  sharpest anchoring trap in testing.
+- **Broadened the "Capturing what you learn" example set** in `SKILL.md` beyond the
+  three rehearsed families (added contaminated metric, missing/mis-owned counter,
+  lost Keeper session) so no single incident family dominates the surface.
+
+### Deferred
+- **A first-class Keeper / ZooKeeper read-only playbook** (`system.zookeeper_connection`,
+  `system.distributed_ddl_queue`, `KEEPER_EXCEPTION` / `SESSION_EXPIRED` /
+  `TABLE_IS_READ_ONLY` codes, read-only recovery) — the one real coverage gap the
+  transfer test surfaced. Tracked for v0.4.0; out of scope for this generalization
+  pass.
+
 ## [0.3.0] - 2026-06-22
 
 Harden the skill against a real large-fleet Kafka-ingest investigation whose

@@ -74,9 +74,9 @@ restarted**, not a host reboot. Distinguish:
 ./promq.sh 'ClickHouseAsyncMetrics_CGroupMemoryUsed{cluster="..."}'
 ```
 
-Signature of a query-driven OOM: `MemAvailable` collapses from hundreds of GB to
-single-digit GB within a minute, then `node_vmstat_oom_kill` steps +1, then
-`Uptime` resets. The gap between `max_server_memory_usage` and total RAM is the
+Signature of a query-driven OOM: `MemAvailable` collapses sharply (a large
+fraction of RAM gone fast), then `node_vmstat_oom_kill` steps +1, then `Uptime`
+resets (observed once: hundreds of GB to single-digit GB within a minute). The gap between `max_server_memory_usage` and total RAM is the
 headroom a fast/untracked spike has to blow through — small headroom + no
 per-query `max_memory_usage` cap is the classic setup. Next step: query
 `system.query_log` for the culprit (query-state reference).
@@ -108,8 +108,9 @@ nodes regardless of core count, and is the recipe that actually works on bare me
   usually similar across nodes even when one is disk-bound. Use it to confirm a
   node is busy, not to find the straggler.
 
-One node with ~10x the iowait of its peers, stable for hours, is rarely workload
-— suspect **hardware tier mismatch**. Confirm with disk metrics (step 4). When no
+One node with iowait persistently and markedly higher than its peers, stable for
+hours, is rarely workload — suspect **hardware tier mismatch** (observed once:
+~10x peer iowait). Confirm with disk metrics (step 4). When no
 direct iowait number separates the tiers, the **query latency profile is the
 proxy**: a disk-straggler node shows a healthy p50 but a fat p999 (reads that miss
 page cache hit the slow device). See the per-node latency query in
@@ -146,11 +147,12 @@ the **busiest device per node** so each node gets a single comparable value:
 `max by (instance)` is the right reducer here (the data device is the slow one
 under load); `sum by` would dilute it across idle boot/log disks.
 
-Within one cluster, nodes can have different drives. A node doing *less* write
-work but showing *more* util / higher queue depth / higher write latency than
-peers is on slower media (SATA SSD vs NVMe). `node_disk_info` model strings are
-the proof. Note which device actually carries the data — many hosts boot off SATA
-but write data to NVMe; what matters is the device under load.
+Within one cluster, nodes can sit on different storage media. A node doing *less*
+write work but showing *more* util / higher queue depth / higher write latency
+than peers is on slower media (observed once: a SATA SSD among NVMe peers).
+`node_disk_info` model strings are the proof. Note which device actually carries
+the data — a host may boot off one tier but write data to another; what matters is
+the device under load.
 
 **When the disk metrics themselves don't separate the tiers** (per-device labels
 won't map cleanly, or the cluster doesn't export `node_disk_*`), fall back to the
@@ -166,7 +168,8 @@ ClickHouse disk pressure is almost all writes (inserts + merges).
 A disk that has *died* shows up as the OS losing the filesystem: pair this with
 the inside view — `system.errors` full of `FILE_DOESNT_EXIST` / `PATH_ACCESS_DENIED`,
 `dmesg` showing `no available path - failing I/O` and `EXT4-fs` bitmap errors,
-and `df` reporting phantom-empty (1% used on a full disk = bitmap corruption).
+and `df` grossly under-reporting usage on a full disk (= bitmap corruption;
+observed once: 1% used on a full disk).
 
 ## Step 5 — Network (distributed query / replication)
 
@@ -190,9 +193,15 @@ Counters (wrap in `rate(...[Nm])`):
 Gauges:
 - `ClickHouseMetrics_Query` — concurrent queries in flight.
 - `ClickHouseMetrics_BackgroundMergesAndMutationsPoolTask` — merge backlog.
-- `ClickHouseAsyncMetrics_MaxPartCountForPartition` — pinned at a round number
-  (e.g. 300/3000) = at the `parts_to_throw_insert` cap → TOO_MANY_PARTS imminent.
-- `ClickHouseMetrics_ReplicasMaxQueueSize`, `_ReadonlyReplica` — replication health.
+- `ClickHouseAsyncMetrics_MaxPartCountForPartition` — pinned at the cluster's
+  `parts_to_throw_insert` value (a per-cluster default; confirm it via
+  `system.server_settings`) → TOO_MANY_PARTS imminent (observed values once: 300
+  and 3000).
+- `ClickHouseMetrics_ReadonlyReplica` — replicas currently read-only (lost Keeper
+  session). `ClickHouseAsyncMetrics_ReplicasMaxQueueSize` / `_ReplicasMaxAbsoluteDelay`
+  — replication backlog / lag (these are **async** metrics, not `ClickHouseMetrics_`;
+  `ReplicasMax*` live in `ServerAsynchronousMetrics`). For a Keeper / read-only
+  incident, see `references/keeper-state.md` (Outside section).
 - `ClickHouseMetrics_GlobalThread`, `_GlobalThreadActive` vs the pool limit, and
   `ClickHouseMetrics_OpenFileForRead` vs the FD limit — exhaustion approaching.
 
