@@ -11,8 +11,7 @@ _Nothing yet. Add user-visible changes here; a maintainer will cut the next rele
 ## [0.5.0] - 2026-06-24
 
 Add a fixture-replay eval harness so skill changes become measurable and
-regression-safe (Phase 1 of the improvements roadmap; see
-docs/superpowers/specs/2026-06-24-clickhouse-debug-improvements-design.md).
+regression-safe (Phase 1 of the improvements roadmap).
 
 ### Added
 - **Capture/replay in the probe scripts** — `CH_CAPTURE_DIR` records a probe's
