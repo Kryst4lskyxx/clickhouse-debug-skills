@@ -77,3 +77,23 @@ entry under an `## [Unreleased]` heading; a maintainer will run
 
 By contributing, you agree your contributions are licensed under the
 [Apache-2.0 License](./LICENSE).
+
+## Adding an eval scenario
+
+1. Create `evals/scenarios/<slug>/` with `meta.yaml` (version, deployment,
+   domain, summary), `prompt.md` (the incident as a user reports it), and
+   `rubric.md` (numbered criteria; mark the gating ones `(critical)`).
+2. Capture fixtures against a real cluster into `evals/local/` with
+   `CH_CAPTURE_DIR=evals/local/<slug> ./chq.sh "..."`, then **sanitize** before
+   moving them under the scenario's `fixtures/`.
+3. Run `./evals/run.sh` and `./evals/judge.sh` until the scenario passes for a
+   correct diagnosis and fails for a broken one.
+
+### Fixture sanitization checklist (REQUIRED before committing fixtures)
+- [ ] No real hostnames / pod names — replace with `ch-01`, `ch-02`, …
+- [ ] No IPs, FQDNs, or internal URLs.
+- [ ] No tenant / customer / database / user identifiers that are real.
+- [ ] No real data values in result rows — keep only the shape and magnitudes
+      the diagnosis needs.
+- [ ] Numbers are plausible but synthetic (don't paste a real production figure
+      verbatim if it's sensitive).

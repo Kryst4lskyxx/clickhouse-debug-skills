@@ -83,6 +83,20 @@ The skill gathers the inputs it needs (the problem, the target in Prometheus, co
 
 Reference playbooks, one per stage: `references/cluster-state.md` (outside / Prometheus), `references/query-state.md` (inside / `system.*`), and `references/source-map.md` (confirm / navigating the matched source tree — the differentiator).
 
+### Evals (maintainers)
+
+A fixture-replay harness lets you measure the skill without a live cluster.
+`chq.sh`/`promq.sh` gain two env-gated modes: `CH_CAPTURE_DIR` records a probe's
+real output as a fixture; `CH_REPLAY_DIR` returns that fixture instead of hitting
+the network. Scenarios live in `evals/scenarios/<slug>/` (`prompt.md`,
+`fixtures/`, `rubric.md`, `meta.yaml`). Run one and score it:
+
+    EVAL_AGENT_CMD='claude -p' ./evals/run.sh evals/scenarios/range-join-oom out.txt
+    ./evals/judge.sh evals/scenarios/range-join-oom out.txt
+
+Committed fixtures are synthetic/sanitized; raw captures stay in the ignored
+`evals/local/`. See CONTRIBUTING.md for the sanitization checklist.
+
 ## Safety
 
 Debugging a production cluster must not *become* the incident. Every query this skill issues is read-only and resource-capped, so a probe that would exceed its limits aborts with `MEMORY_LIMIT_EXCEEDED` / `TIMEOUT_EXCEEDED` instead of taking down the node.
