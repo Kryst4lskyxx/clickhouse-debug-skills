@@ -1,0 +1,2 @@
+event_time	query_id	user	memory_usage	query
+2026-06-20 14:31:58	a1b2-oom	analyst	61203400000	SELECT count() FROM system.asynchronous_metric_log a JOIN system.asynchronous_metric_log b ON a.event_time >= b.event_time AND a.event_time <= b.event_time + 60

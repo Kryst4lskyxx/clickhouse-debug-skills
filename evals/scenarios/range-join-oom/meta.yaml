@@ -1,0 +1,4 @@
+version: "25.8.11.66-lts"
+deployment: bare-metal
+domain: memory-oom
+summary: an ad-hoc range-JOIN on asynchronous_metric_log OOM-killed a node
