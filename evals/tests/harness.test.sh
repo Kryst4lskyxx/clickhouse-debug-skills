@@ -31,6 +31,7 @@ printf 'version: "25.8.11.66-lts"\n' > "$tmp/scn/meta.yaml"
 cat > "$tmp/agent" <<'STUB'
 #!/usr/bin/env bash
 echo "REPLAY=$CH_REPLAY_DIR"
+echo "CWD=$(pwd)"
 echo "PROMPT-IN: $(cat)"
 STUB
 chmod +x "$tmp/agent"
@@ -40,6 +41,17 @@ EVAL_AGENT_CMD="$tmp/agent" bash "$ROOT/run.sh" "$tmp/scn" "$out_file" >/dev/nul
 assert_rc "run exits 0" 0 "$rc"
 assert_contains "exported replay dir" "$(cat "$out_file")" "fixtures"
 assert_contains "passed the prompt" "$(cat "$out_file")" "Investigate the OOM"
+
+assert_contains "prompt names the probe scripts" "$(cat "$out_file")" "chq.sh"
+
+# CH_SRC makes the agent run from the source tree.
+mkdir -p "$tmp/src"
+EVAL_AGENT_CMD="$tmp/agent" CH_SRC="$tmp/src" bash "$ROOT/run.sh" "$tmp/scn" "$tmp/out2.txt" >/dev/null 2>&1
+assert_contains "agent runs from CH_SRC" "$(cat "$tmp/out2.txt")" "$tmp/src"
+
+# Missing fixtures/ dir -> exit 2.
+mkdir -p "$tmp/nofx"; printf 'x\n' > "$tmp/nofx/prompt.md"
+bash "$ROOT/run.sh" "$tmp/nofx" 2>/dev/null; assert_rc "missing fixtures exits 2" 2 "$?"
 
 bash "$ROOT/run.sh" "$tmp/missing" 2>/dev/null; assert_rc "missing scenario exits 2" 2 "$?"
 
