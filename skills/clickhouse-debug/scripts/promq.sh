@@ -14,21 +14,34 @@
 #   - Every call has a hard 60s timeout (-m 60) so a slow/huge query can't hang.
 #   - Keep ranges short and steps coarse: a 24h range at 15s step on a
 #     high-cardinality metric returns a flood. Prefer step >= 60s.
+#   - Eval harness only (ignored in normal use): CH_REPLAY_DIR=dir returns a
+#     canned fixture for this query; CH_CAPTURE_DIR=dir records the formatted
+#     output as a fixture. Keyed on q|mode|span|step (not the resolved epochs).
 
 set -euo pipefail
 
+q="${1:?usage: promq.sh 'PROMQL' [range SPAN STEP]}"
+mode="${2:-instant}"
+span="${3:-1h}"; step="${4:-60s}"   # effective values; also used for the fixture key
+
+# --- eval harness hook: replay short-circuits before any network/PROM needed ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_fixture.sh
+. "$SCRIPT_DIR/_fixture.sh"
+if [ "$mode" = range ]; then _logical="$q|$mode|$span|$step"; else _logical="$q|$mode||"; fi
+if [ -n "${CH_REPLAY_DIR:-}" ]; then
+  if fixture_replay promq "$_logical"; then exit 0; fi
+  echo "promq.sh: replay miss (CH_REPLAY_DIR=$CH_REPLAY_DIR) — capture this probe or fix the scenario." >&2
+  exit 3
+fi
 PROM="${PROM:-}"
 if [ -z "$PROM" ]; then
   echo "ERROR: set the Prometheus base URL first, e.g. export PROM='https://prometheus.example.com'" >&2
   exit 2
 fi
 
-q="${1:?usage: promq.sh 'PROMQL' [range SPAN STEP]}"
-mode="${2:-instant}"
-
 # Build the curl args for the chosen endpoint.
 if [ "$mode" = "range" ]; then
-  span="${3:-1h}"; step="${4:-60s}"
   num=${span%[smhd]}; unit=${span: -1}
   case $unit in s) mul=1;; m) mul=60;; h) mul=3600;; d) mul=86400;; *) mul=1;; esac
   now=$(date +%s); start=$((now - num*mul))
@@ -75,14 +88,16 @@ if [ "$n" -eq 0 ]; then
 fi
 
 if [ "$mode" = "range" ]; then
-  printf '%s' "$raw" \
+  out="$(printf '%s' "$raw" \
   | jq -r '.data.result[] | . as $s
       | ([.values[][1]|tonumber] | (add/length) as $avg | (max) as $mx
          | "\($avg)\t\($mx)")
       as $stats | "\($stats)\t\($s.metric|to_entries|map("\(.key)=\(.value)")|join(","))"' \
-  | sort -rn -k2 | awk -F'\t' 'BEGIN{printf "%-12s %-12s %s\n","AVG","MAX","SERIES"}{printf "%-12.4f %-12.4f %s\n",$1,$2,$3}'
+  | sort -rn -k2 | awk -F'\t' 'BEGIN{printf "%-12s %-12s %s\n","AVG","MAX","SERIES"}{printf "%-12.4f %-12.4f %s\n",$1,$2,$3}')"
 else
-  printf '%s' "$raw" \
+  out="$(printf '%s' "$raw" \
   | jq -r '.data.result[] | "\(.value[1])\t\(.metric|to_entries|map("\(.key)=\(.value)")|join(","))"' \
-  | sort -rn | awk -F'\t' 'BEGIN{printf "%-14s %s\n","VALUE","SERIES"}{printf "%-14.4f %s\n",$1,$2}'
+  | sort -rn | awk -F'\t' 'BEGIN{printf "%-14s %s\n","VALUE","SERIES"}{printf "%-14.4f %s\n",$1,$2}')"
 fi
+printf '%s\n' "$out"
+fixture_capture promq "$_logical" "$out"

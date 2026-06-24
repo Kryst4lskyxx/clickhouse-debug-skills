@@ -1,0 +1,3 @@
+ddb861ab6c55fb01bf1673214e16740606472605	node_memory_MemAvailable_bytes{instance="ch-07"}|range|1h|60s
+237cd227bc9f0fd1f4adc0227518343908fc9d21	up{instance="ch-07"}|instant||
+a7211df221794afcfe1eca04c9681b1e7dd0d86c	SELECT event_time, query_id, user, memory_usage, query FROM clusterAllReplicas(default, system.query_log) WHERE event_time BETWEEN '2026-06-20 14:25:00' AND '2026-06-20 14:33:00' AND type IN ('QueryFinish','ExceptionWhileProcessing') ORDER BY memory_usage DESC LIMIT 20

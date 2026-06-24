@@ -22,6 +22,9 @@
 #   export CH_MAX_THREADS=4                          # threads per query
 #   export CH_READONLY=1                             # ONLY if connecting with a
 #                                                   # read-write account (see below)
+#   # Eval harness only (ignored in normal use):
+#   #   CH_REPLAY_DIR=dir  -> return canned fixture for this query, no network
+#   #   CH_CAPTURE_DIR=dir -> record this query's real response as a fixture
 #
 # Fan-out caution: a `clusterAllReplicas(...)` / `cluster(...)` scan reads from
 # EVERY node, so the bytes/rows scanned multiply by the node count. Narrow the
@@ -48,7 +51,6 @@
 
 set -euo pipefail
 
-CH_URL="${CH_URL:?set CH_URL, e.g. export CH_URL=http://node:8123}"
 CH_USER="${CH_USER:-default}"
 CH_PASS="${CH_PASS:-}"
 
@@ -77,6 +79,18 @@ else
   sql="$(cat)"
 fi
 : "${sql:?provide SQL as arg, via -f FILE, or on stdin}"
+
+# --- eval harness hook: replay short-circuits before any network/credentials ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_fixture.sh
+. "$SCRIPT_DIR/_fixture.sh"
+if [ -n "${CH_REPLAY_DIR:-}" ]; then
+  if fixture_replay chq "$sql"; then exit 0; fi
+  echo "chq.sh: replay miss (CH_REPLAY_DIR=$CH_REPLAY_DIR) — capture this probe or fix the scenario." >&2
+  exit 3
+fi
+# Real run needs the endpoint; require it here (after replay opted out).
+CH_URL="${CH_URL:?set CH_URL, e.g. export CH_URL=http://node:8123}"
 
 auth=(-u "${CH_USER}:${CH_PASS}")
 
@@ -148,5 +162,10 @@ case "$resp" in
   *"Code: 160"*) echo "chq.sh: rejected by max_estimated_execution_time (CH_MAX_EST_TIME=${CH_MAX_EST_TIME}s) before running. Narrow the time window or raise CH_MAX_EST_TIME." >&2 ;;
   *"Code: 241"*) echo "chq.sh: hit max_memory_usage (CH_MAX_MEM=${CH_MAX_MEM} bytes). Narrow the GROUP BY / result, or raise CH_MAX_MEM deliberately for this call." >&2 ;;
 esac
+
+# --- eval harness hook: record successful real responses as fixtures ---
+if [ "$rc" -eq 0 ] && [ -n "$resp" ]; then
+  fixture_capture chq "$sql" "$resp"
+fi
 
 exit "$rc"

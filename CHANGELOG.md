@@ -8,6 +8,28 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.5.0] - 2026-06-24
+
+Add a fixture-replay eval harness so skill changes become measurable and
+regression-safe (Phase 1 of the improvements roadmap).
+
+### Added
+- **Capture/replay in the probe scripts** — `CH_CAPTURE_DIR` records a probe's
+  output as a fixture; `CH_REPLAY_DIR` returns the fixture with no network. Both
+  are inert when unset, so normal debugging is unchanged. Shared logic in
+  `scripts/_fixture.sh`; portable sha1 keying on the normalized query.
+- **Eval harness** — `evals/run.sh` (scenario → subagent in replay mode →
+  transcript) and `evals/judge.sh` (transcript → rubric scorecard), with the
+  agent/judge command injectable (`EVAL_AGENT_CMD`/`EVAL_JUDGE_CMD`) for testing.
+- **Seed scenario** `range-join-oom`, proven to pass a correct diagnosis and
+  fail a neutered one.
+- **Shell unit tests** under `scripts/tests/` and `evals/tests/` (no external
+  framework).
+
+### Changed
+- `.gitignore` now tracks the harness + sanitized fixtures while keeping raw
+  captures in the ignored `evals/local/`.
+
 ## [0.4.0] - 2026-06-23
 
 Close the one real coverage gap the v0.3.1 transfer test surfaced: the skill had
