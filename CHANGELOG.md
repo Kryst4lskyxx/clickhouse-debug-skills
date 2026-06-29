@@ -8,6 +8,30 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.6.0] - 2026-06-29
+
+Complete the readiness & routing harness: automated preflight checks, executable
+routing table, and curl-guard hook to prevent uncapped queries.
+
+### Added
+- **`scripts/preflight.sh`** — step-0 readiness check: source-tree detection,
+  automated source-vs-live version match, `CH_URL`/Prometheus reachability, and
+  cluster topology, ending in a `STATUS: READY`/`BLOCKED` line. Cluster reads go
+  through `chq.sh` (caps + replay inherited).
+- **Executable routing** — `references/routing.tsv` (single source of truth) +
+  `scripts/route.sh` to look up the reference playbook + altinity specialist for
+  an error code or keyword, guarded by `routing.test.sh` so it can't drift from
+  the SKILL.md table.
+- **Claude Code plugin `PreToolUse` curl-guard** (`scripts/hooks/pretooluse-chq-guard.sh`
+  + `hooks/hooks.json`) that blocks a raw uncapped `curl` query to a ClickHouse
+  port, forcing it through `chq.sh`. Ships the script via npx; wires it only in
+  the plugin.
+
+### Changed
+- **SKILL.md** — `preflight.sh` is now the documented step 0; the version-match
+  input bullet defers to it; companion-availability detection is an explicit
+  model-side check; the routing section references `route.sh`.
+
 ## [0.5.0] - 2026-06-24
 
 Add a fixture-replay eval harness so skill changes become measurable and
