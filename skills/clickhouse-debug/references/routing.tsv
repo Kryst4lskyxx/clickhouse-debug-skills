@@ -7,6 +7,7 @@ mutation	references/query-state.md	altinity-expert-clickhouse-mutations	stuck or
 ACCESS_DENIED	references/query-state.md	altinity-expert-clickhouse-grants	grants / auth after upgrade
 AUTHENTICATION_FAILED	references/query-state.md	altinity-expert-clickhouse-grants	grants / auth after upgrade
 NOT_ENOUGH_PRIVILEGES	references/query-state.md	altinity-expert-clickhouse-grants	grants / privileges
+grant	references/query-state.md	altinity-expert-clickhouse-grants	grants / auth / privileges
 index	references/query-state.md	altinity-expert-clickhouse-index-analysis	scans larger than expected / ORDER BY / skip-index
 INSERT	references/query-state.md	altinity-expert-clickhouse-ingestion	slow INSERT / high part-creation / batch sizing
 SELECT	references/query-state.md	altinity-expert-clickhouse-reporting	slow SELECT latency / query-pattern analysis

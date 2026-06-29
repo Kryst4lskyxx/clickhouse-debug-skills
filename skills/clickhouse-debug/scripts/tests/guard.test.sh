@@ -21,9 +21,17 @@ assert_eq "allows bare /ping" 0 \
   "$(guard_rc 'curl -sk http://h:8123/ping')"
 assert_eq "allows chq.sh wrapper" 0 \
   "$(guard_rc 'source ./.chenv && ./chq.sh "SELECT 1"')"
+assert_eq "allows curl+chq.sh chain" 0 \
+  "$(guard_rc 'curl -sk http://h:8123/?query=SELECT%201 | ./chq.sh "SELECT 2"')"
 assert_eq "ignores non-CH curl with query" 0 \
   "$(guard_rc 'curl -sk "http://api.example.com/x?query=1"')"
 assert_eq "ignores plain bash" 0 \
   "$(guard_rc 'ls -la && echo hi')"
+
+# Verify block reason mentions chq.sh on stderr.
+block_err="$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' \
+  "$(printf '%s' 'curl -sk http://h:8123/ --data-urlencode "query=SELECT 1"' | jq -R -s .)" | \
+  bash "$GUARD" 2>&1 >/dev/null)"
+assert_contains "block reason mentions chq.sh" "$block_err" "chq.sh"
 
 finish "guard.test.sh"

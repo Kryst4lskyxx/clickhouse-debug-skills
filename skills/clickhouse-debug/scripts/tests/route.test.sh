@@ -14,6 +14,10 @@ assert_contains "known code names reference" "$out" "references/query-state.md"
 out="$(bash "$ROUTE" KAFKA)"
 assert_contains "keyword is case-insensitive" "$out" "altinity-expert-clickhouse-kafka"
 
+# Grant keyword resolves.
+out="$(bash "$ROUTE" grant)"
+assert_contains "grant keyword resolves" "$out" "altinity-expert-clickhouse-grants"
+
 # Unknown term -> overview fallback hint on stderr, exit 0.
 err="$(bash "$ROUTE" ZZZ_NO_SUCH_THING 2>&1)"; rc=$?
 assert_rc "unknown term exits 0" 0 "$rc"
