@@ -36,20 +36,28 @@ Use the issue forms — they prompt for the context we need to act:
    or `fix/promq-range-step`.
 3. **Make focused changes.** Most contributions touch:
    - `skills/clickhouse-debug/SKILL.md` — the triage funnel and routing.
-   - `skills/clickhouse-debug/references/{cluster-state,query-state}.md` — the
-     Prometheus and `system.*` playbooks.
-   - `skills/clickhouse-debug/scripts/{chq,promq}.sh` — the capped helpers.
+   - `skills/clickhouse-debug/references/{cluster-state,query-state,keeper-state,source-map}.md` —
+     the Prometheus, `system.*`, Keeper, and source-confirmation playbooks.
+   - `skills/clickhouse-debug/references/routing.tsv` — the symptom→specialist map
+     that `route.sh` reads; a test keeps its specialist set in sync with the
+     SKILL.md routing table, so update both together.
+   - `skills/clickhouse-debug/scripts/{chq,promq,preflight,route}.sh` and
+     `scripts/hooks/pretooluse-chq-guard.sh` — the capped helpers, the step-0
+     readiness check, the router, and the Claude Code plugin curl-guard.
    Keep the **resource-safety** discipline intact: any new ClickHouse query must
    go through `chq.sh` (or carry equivalent caps). A debug probe must never be
    able to OOM or stall a node.
 4. **Validate** before pushing:
    ```bash
    # JSON manifests parse
-   for f in .claude-plugin/*.json skills/clickhouse-debug/metadata.json; do
+   for f in .claude-plugin/*.json hooks/hooks.json skills/clickhouse-debug/metadata.json; do
      python3 -c "import json;json.load(open('$f'))" && echo "OK  $f"
    done
-   # shell scripts are syntactically valid
-   bash -n skills/clickhouse-debug/scripts/*.sh scripts/*.sh
+   # shell scripts are syntactically valid (incl. the plugin hook)
+   bash -n skills/clickhouse-debug/scripts/*.sh \
+           skills/clickhouse-debug/scripts/hooks/*.sh scripts/*.sh
+   # unit tests pass (routing drift guard, route/preflight/guard, fixture replay)
+   bash skills/clickhouse-debug/scripts/tests/run.sh
    ```
 5. **Open the PR** against `main` and fill in the template. CI/maintainer review
    may follow; you can self-merge once checks pass and the template is complete.

@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Agent skills for debugging live ClickHouse clusters and queries",
-    "version": "0.5.0"
+    "version": "0.6.0"
   },
   "plugins": [
     {
       "name": "clickhouse-debug",
       "source": "./",
       "description": "Diagnose live ClickHouse cluster and query incidents from a version-matched source tree — Prometheus triage + read-only system.* forensics + source-confirmed root cause, with every probe resource-capped so it can't OOM a node",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "author": {
         "name": "Ye Yuan"
       },
