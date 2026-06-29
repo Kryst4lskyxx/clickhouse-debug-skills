@@ -18,5 +18,6 @@
     "rca",
     "database"
   ],
-  "skills": ["./skills/clickhouse-debug/"]
+  "skills": ["./skills/clickhouse-debug/"],
+  "hooks": "./hooks/hooks.json"
 }
