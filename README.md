@@ -80,6 +80,8 @@ The skill gathers the inputs it needs (the problem, the target in Prometheus, co
 
 - `scripts/chq.sh` — read-only ClickHouse HTTP query helper with **resource caps baked into every call** (`max_memory_usage`, `max_execution_time`, `max_rows_to_read`, …), aligned to the official `agent-query-safety` rule. Retries once on a transient curl failure and prints a stderr hint naming the exact cap to raise when one trips.
 - `scripts/promq.sh` — Prometheus query helper (instant + range modes, pretty-printed). Flags `0 series` (likely a wrong/absent metric name) instead of a silent empty table, and retries once on a transient fetch failure.
+- `scripts/preflight.sh` — step-0 readiness check: source tree + version match (source `VERSION_STRING` vs live `version()`), `CH_URL`/Prometheus reachability, and cluster topology, ending in a `STATUS: READY`/`BLOCKED` line. All cluster reads go through `chq.sh`.
+- `scripts/route.sh` — executable symptom→specialist routing over `references/routing.tsv`; `./route.sh CANNOT_SCHEDULE_TASK` prints the reference playbook + altinity specialist to use.
 
 Reference playbooks, one per stage: `references/cluster-state.md` (outside / Prometheus), `references/query-state.md` (inside / `system.*`), and `references/source-map.md` (confirm / navigating the matched source tree — the differentiator).
 
@@ -99,7 +101,7 @@ Committed fixtures are synthetic/sanitized; raw captures stay in the ignored
 
 ## Safety
 
-Debugging a production cluster must not *become* the incident. Every query this skill issues is read-only and resource-capped, so a probe that would exceed its limits aborts with `MEMORY_LIMIT_EXCEEDED` / `TIMEOUT_EXCEEDED` instead of taking down the node.
+Debugging a production cluster must not *become* the incident. Every query this skill issues is read-only and resource-capped, so a probe that would exceed its limits aborts with `MEMORY_LIMIT_EXCEEDED` / `TIMEOUT_EXCEEDED` instead of taking down the node. Installed as a Claude Code plugin, a `PreToolUse` hook additionally **blocks** a raw uncapped `curl` query to a ClickHouse port, forcing it through the capped `chq.sh` wrapper.
 
 ## Repository layout
 
@@ -108,7 +110,8 @@ Debugging a production cluster must not *become* the incident. Every query this 
 ├── .claude-plugin/          # Claude Code plugin marketplace manifests
 │   ├── marketplace.json
 │   └── plugin.json
-├── skills/clickhouse-debug/  # the skill (SKILL.md + metadata.json + references/ + scripts/)
+├── skills/clickhouse-debug/  # the skill (SKILL.md + metadata.json + references/ + scripts/ incl. preflight.sh, route.sh, hooks/)
+├── hooks/                    # Claude Code plugin hook wiring (PreToolUse curl-guard)
 ├── LICENSE                   # Apache-2.0
 └── README.md
 ```
