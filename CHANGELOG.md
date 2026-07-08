@@ -8,6 +8,19 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.6.1] - 2026-07-08
+
+Fix a plugin-load failure introduced with the v0.6.0 curl-guard hook.
+
+### Fixed
+- **Plugin hooks no longer fail to load.** `plugin.json` declared
+  `"hooks": "./hooks/hooks.json"`, but Claude Code already loads the standard
+  `hooks/hooks.json` automatically — the explicit reference made it load twice,
+  raising `Duplicate hooks file detected` and disabling the `PreToolUse`
+  curl-guard. Removed the redundant `manifest.hooks` key; the standard hook file
+  is picked up automatically. `manifest.hooks` should only reference *additional*
+  hook files, of which there are none.
+
 ## [0.6.0] - 2026-06-29
 
 Complete the readiness & routing harness: automated preflight checks, executable
