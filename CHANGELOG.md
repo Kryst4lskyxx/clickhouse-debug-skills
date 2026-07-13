@@ -8,6 +8,30 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.6.2] - 2026-07-13
+
+Discovery + discipline pass on the skill, driven by a RED/GREEN baseline.
+
+### Changed
+- **Description leads with triggering conditions, not a workflow summary.** The
+  old description opened by summarizing the Outside→Inside→Confirm workflow, which
+  invites an agent to skim the body instead of reading it. It now starts with
+  "Use when the user is investigating a running ClickHouse cluster: …" and keeps
+  every error-code/symptom trigger. (SDO: description = *when to use*, not *what
+  it does*.)
+- **Resource safety adds a red-flags checklist** and a one-line principle ("there
+  is no incident urgent enough to justify an uncapped probe"). Compressed the
+  `query_log.Settings` contamination note to a pointer (full text already lives in
+  `references/query-state.md`).
+
+### Added
+- **Pressure-test eval modality** (`evals/pressure/`) — control-vs-treatment
+  discipline tests, separate from the fixture-replay `evals/scenarios/`. First
+  scenario `oom-cap-pressure` baits the "go unlimited / curl raw to escape the
+  cap" failure and records the baseline: 0/12 no-guidance controls violated on
+  Opus 4.8, so the mechanical guardrails (`chq.sh` caps + `PreToolUse` curl-guard)
+  — not prose — remain the real fix.
+
 ## [0.6.1] - 2026-07-08
 
 Fix a plugin-load failure introduced with the v0.6.0 curl-guard hook.

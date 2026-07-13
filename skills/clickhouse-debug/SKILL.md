@@ -1,11 +1,8 @@
 ---
 name: clickhouse-debug
 description: >-
-  Diagnose live ClickHouse cluster and query problems from a checked-out
-  ClickHouse source tree, using Prometheus metrics plus read-only queries
-  against the cluster's own system.* tables, and confirming every root-cause
-  claim against the matched-version source. Use this WHENEVER the user is
-  investigating a running ClickHouse cluster: nodes down / flapping / OOM-killed,
+  Use when the user is investigating a running ClickHouse cluster: nodes down /
+  flapping / OOM-killed,
   pods crash-looping or OOMKilled, high CPU / iowait / load, merge or part
   pile-ups (TOO_MANY_PARTS), replication lag, replicas stuck read-only / lost
   Keeper (ZooKeeper) sessions / hanging ON CLUSTER DDL, slow or failing queries,
@@ -18,7 +15,7 @@ description: >-
 license: Apache-2.0
 metadata:
   author: Ye Yuan
-  version: "0.6.1"
+  version: "0.6.2"
 ---
 
 # ClickHouse cluster & query debugging
@@ -132,6 +129,9 @@ The canonical rule for this is `agent-query-safety` in the official
 `clickhouse-best-practices` skill — read it if in doubt; the rules below are the
 debugging-specific application of it.
 
+**There is no incident urgent enough to justify an uncapped probe — the urgency
+is the reason to cap, not the exception to it.**
+
 Non-negotiable rules:
 
 - **Always cap memory and time per query.** Use `scripts/chq.sh`, which injects
@@ -160,6 +160,18 @@ Non-negotiable rules:
 - **Prefer the cheap signal first.** A single `system.metric_log` row or one
   `up`/`MemAvailable` series usually rules out whole branches before you run any
   expensive aggregation.
+
+**Red flags — STOP before you run it:**
+
+- About to run `curl` against a ClickHouse port instead of `chq.sh`
+- Thinking "just this once, uncapped" because the incident is urgent
+- A JOIN with only `>=` / `<=` (no equality key) on a `*_log` table
+- No `WHERE event_time > now() - INTERVAL ...` in the innermost scan
+- A `clusterAllReplicas(...)` scan running on the default row/byte cap on a multi-node fleet
+- Raising a cap via `export` / `.chenv` instead of inline on the one call
+
+**Every one of these means: stop, route the query through `chq.sh`, and cap it
+before it runs.**
 
 If you ever need a heavier query, narrow the time window and raise caps
 *deliberately* — inline for the one call so the default stays safe — and tell
@@ -204,12 +216,10 @@ source ./.chenv && CH_MAX_ROWS=$((5*1000*1000*1000)) ./chq.sh "
 Raise `CH_MAX_BYTES` the same way for byte-bound scans (`Code: 307`). Keep the
 override inline so the safe default is restored on the next call.
 
-**These caps contaminate `query_log.Settings`.** Because the wrapper sends them as
-query settings, every probe it runs records `max_threads`, `max_memory_usage`,
-etc. in its own `system.query_log` row. Don't read those values back as the
-cluster's production config — that's the debug cap, not the server default. To
-read real config, query `system.settings` on a normal session (see
-`references/query-state.md`, Settings section).
+**The wrapper's caps contaminate `query_log.Settings`** — every probe records its
+own `max_threads`/`max_memory_usage` there, so don't read those back as the
+server's production config. Read real config from `system.settings`; see
+`references/query-state.md` (Settings section).
 
 ## Setup (once per session)
 
