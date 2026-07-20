@@ -8,6 +8,20 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.6.3] - 2026-07-20
+
+Documents optional integration with a private, org-specific ClickHouse-context
+companion skill — no code coupling, strictly additive.
+
+### Added
+- **Companion-skill detection for an internal ClickHouse-context companion**
+  (generically `orgname-clickhouse-context`). If an org installs one, it's loaded
+  passively in the Frame stage: cluster/pod/app facts resolve via its application
+  index instead of asking the operator to recite them, and its incident library is
+  checked before drilling from scratch. If absent, the existing gather-inputs flow
+  is unchanged — the skill remains fully functional and generic without it.
+- `evals/tests/companion-doc.test.sh` asserting both additions are present.
+
 ## [0.6.2] - 2026-07-13
 
 Discovery + discipline pass on the skill, driven by a RED/GREEN baseline.
