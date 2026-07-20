@@ -80,6 +80,16 @@ engine is this table, is `FINAL` the read idiom, which column prunes the index")
 load an existing `<cluster>-analyst` skill, or offer to run the profiler once while
 the cluster is calm.
 
+**4. An internal ClickHouse-context companion (optional, org-private).** Some orgs
+ship a private companion (named per org, e.g. `orgname-clickhouse-context`) carrying
+per-application cluster inventory (names, Prometheus label schemes, endpoints,
+proxy/topology), dashboards/runbooks, the read-only credential retrieval process,
+fork/source-tree mapping, and a known-incident library. It is **knowledge only** — it
+runs no probes. If present, load it in the Frame stage: resolve the cluster/pod/app to
+its real facts via its **application index** instead of asking the operator to recite
+them, and scan its incident library before drilling from scratch. If absent, use the
+gather-inputs flow below unchanged.
+
 **Detecting them (do this explicitly, up front):** inspect your own available-skills
 list for `clickhouse-best-practices`, `altinity-expert-clickhouse-overview`, and
 `altinity-profiler-clickhouse`, and **state which are present and which are missing**
@@ -114,6 +124,11 @@ You need these to start. If any are missing, **ask the user — don't guess**:
    (source `VERSION_STRING` vs live `SELECT version()`) and prints `PASS` or a
    `WARN: source X vs live Y` — read its output rather than checking by hand. If
    they diverge, say so; line numbers and behaviors may differ.
+
+If an internal ClickHouse-context companion (e.g. `orgname-clickhouse-context`) is
+present, resolve items 2–3 — and any fork/source specifics for item 5 — from its
+**application index** and per-app `inventory.md` / `access.md` instead of asking the
+user to recite them; fall back to asking only for what it doesn't cover.
 
 Confirm the gathered setup back to the user in one line before running probes, so
 a wrong cluster/endpoint is caught before any query hits production.
