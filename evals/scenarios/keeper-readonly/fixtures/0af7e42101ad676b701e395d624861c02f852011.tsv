@@ -1,0 +1,10 @@
+node	name	host	is_expired	session_uptime_elapsed_seconds	session_timeout_ms
+ch-05	default	keeper-01:2181	0	532	30000
+ch-04	default	keeper-01:2181	0	540	30000
+ch-06	default	keeper-03:2181	0	551	30000
+ch-09	default	keeper-03:2181	0	604600	30000
+ch-08	default	keeper-01:2181	0	604650	30000
+ch-07	default	keeper-01:2181	0	604700	30000
+ch-03	default	keeper-03:2181	0	604775	30000
+ch-02	default	keeper-01:2181	0	604790	30000
+ch-01	default	keeper-01:2181	0	604812	30000

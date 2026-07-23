@@ -1,0 +1,5 @@
+name	value	last_error_time	msg
+TABLE_IS_READ_ONLY	4	2026-07-15 03:11:53	Table is in readonly mode (replica lost its ZooKeeper session)
+KEEPER_EXCEPTION	3	2026-07-15 03:11:52	Coordination::Exception: Session expired (Session expired)
+KEEPER_EXCEPTION	2	2026-07-15 03:11:49	Coordination::Exception: Session expired (Session expired)
+KEEPER_EXCEPTION	1	2026-07-15 03:11:55	Coordination::Exception: Session expired (Session expired)

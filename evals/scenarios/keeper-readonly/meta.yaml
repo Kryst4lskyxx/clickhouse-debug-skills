@@ -1,0 +1,4 @@
+version: "25.8.11.66-lts"
+deployment: bare-metal
+domain: keeper-readonly
+summary: a Keeper leader restart briefly expired sessions on 3 replicas, flipping them read-only and stalling an ON CLUSTER DDL

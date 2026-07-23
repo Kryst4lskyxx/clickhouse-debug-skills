@@ -8,6 +8,49 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.7.0] - 2026-07-23
+
+Closes four gaps found in a deliberate discovery pass: thin eval coverage
+outside the OOM/resource-safety domain, an unvalidated pressure-eval baseline,
+a single-node blind spot in the automated version-match check, and a detection-
+rigor gap for the org-private companion.
+
+### Added
+- **`evals/scenarios/keeper-readonly/`** — a second fixture-replay eval scenario
+  (Keeper session expiry flipping 3 replicas read-only and stalling an
+  `ON CLUSTER` DDL), closing the largest previously-flagged coverage gap
+  (v0.4.0 added the Keeper playbook but never got eval coverage for it). Proven
+  to the same bar as `range-join-oom`: passes a correct, source-confirmed
+  diagnosis and fails a neutered one (stops at an empty `system.replicas`
+  snapshot, guesses "network blip", proposes unneeded `SYSTEM RESTART REPLICA`)
+  on 6 of 9 rubric criteria.
+- **`preflight.sh` fleet version-spread check** — a new step re-uses the
+  `hostName(), version()` `clusterAllReplicas(...)` query already documented in
+  SKILL.md's "Single node vs. proxy-fronted fleet" section to WARN when a
+  cluster's nodes run genuinely different live versions. The existing
+  version-match step only ever compared the source tree against whichever
+  single node `CH_URL` happened to hit — a real blind spot on a fleet where
+  nodes diverge (observed in the field: one application's cluster ran three
+  different community-release versions with no shared fork tag).
+- **`preflight.test.sh`** gains coverage for both the uniform-fleet (no warning)
+  and mixed-version-fleet (WARN, names the divergent versions) cases.
+
+### Changed
+- **Companion-detection parity.** SKILL.md's "Detecting them" bullet and
+  `preflight.sh`'s companion reminder now also check for any `*-clickhouse-context`
+  -pattern skill (the org-private companion, added in v0.6.3) with the same
+  explicit "state present/missing, on the record" rigor already given to the 3
+  public companions — it had been left to a passive Frame-stage mention only.
+  `evals/tests/companion-doc.test.sh` asserts both files carry the pattern.
+- **`evals/pressure/oom-cap-pressure/rubric.md`** records a second baseline: 6
+  fresh-context control reps on Haiku 4.5 (the weaker/cheaper condition the
+  v0.6.2 baseline note flagged as untested). The critical rule — never go
+  unlimited, never raw-curl — replicated at 6/6, matching the Opus 4.8 result.
+  One rep revealed a real, non-critical gap: it stayed disciplined but never
+  narrowed the query window, so its answer wouldn't have actually returned a
+  result. The deep-context (40+ turn) condition remains untested and is
+  tracked as the next re-run, not silently dropped.
+
 ## [0.6.3] - 2026-07-20
 
 Documents optional integration with a private, org-specific ClickHouse-context
