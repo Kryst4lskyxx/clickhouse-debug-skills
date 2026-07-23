@@ -15,7 +15,7 @@ description: >-
 license: Apache-2.0
 metadata:
   author: Ye Yuan
-  version: "0.6.3"
+  version: "0.7.0"
 ---
 
 # ClickHouse cluster & query debugging
@@ -91,16 +91,19 @@ them, and scan its incident library before drilling from scratch. If absent, use
 gather-inputs flow below unchanged.
 
 **Detecting them (do this explicitly, up front):** inspect your own available-skills
-list for `clickhouse-best-practices`, `altinity-expert-clickhouse-overview`, and
-`altinity-profiler-clickhouse`, and **state which are present and which are missing**
-before you start drilling. This is the reliable detection path — you already have
-your skill list in context, whereas a filesystem scan can't see how each agent
-installs skills (`preflight.sh` only prints a reminder to do this check). For any
-missing suite, say what depth you lose: no `clickhouse-best-practices` → fixes are
-uncited general guidance; no `altinity-expert-clickhouse-*` → `system.*` drilling is
-limited to this skill's own references; no `altinity-profiler-clickhouse` → no
-pre-built cluster schema map in the Frame stage. Proceed either way, but on the
-record.
+list for `clickhouse-best-practices`, `altinity-expert-clickhouse-overview`,
+`altinity-profiler-clickhouse`, and any skill matching `*-clickhouse-context` (the
+org-private companion — its name varies per org, so match the pattern rather than
+a literal name), and **state which are present and which are missing** before you
+start drilling. This is the reliable detection path — you already have your skill
+list in context, whereas a filesystem scan can't see how each agent installs skills
+(`preflight.sh` only prints a reminder to do this check). For any missing suite, say
+what depth you lose: no `clickhouse-best-practices` → fixes are uncited general
+guidance; no `altinity-expert-clickhouse-*` → `system.*` drilling is limited to this
+skill's own references; no `altinity-profiler-clickhouse` → no pre-built cluster
+schema map in the Frame stage; no `*-clickhouse-context` companion → cluster/pod/app
+facts and prior incidents must be gathered from the operator instead of resolved
+from an application index. Proceed either way, but on the record.
 
 ## Before you touch anything: gather inputs
 

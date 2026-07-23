@@ -9,6 +9,9 @@ assert_eq() {  # msg expected actual
 assert_contains() {  # msg haystack needle
   case "$2" in *"$3"*) ;; *) echo "  FAIL: $1: [$2] missing [$3]"; _assert_fails=1;; esac
 }
+assert_not_contains() {  # msg haystack needle
+  case "$2" in *"$3"*) echo "  FAIL: $1: [$2] should not contain [$3]"; _assert_fails=1;; esac
+}
 assert_rc() {  # msg expected-rc actual-rc
   if [ "$2" != "$3" ]; then echo "  FAIL: $1: expected rc $2 got $3"; _assert_fails=1; fi
 }

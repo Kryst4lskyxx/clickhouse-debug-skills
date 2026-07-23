@@ -6,8 +6,10 @@
 #
 # It confirms, in one shot, what used to be manual prose: that you're in a CH
 # source tree, that the endpoints answer, that the source version matches the live
-# server (line numbers depend on this), and roughly how big the fleet is (so
-# fan-out caps can be sized). All cluster reads go through chq.sh, so the
+# server (line numbers depend on this), roughly how big the fleet is (so fan-out
+# caps can be sized), and whether that fleet actually runs a single version (the
+# source-match above only covers the one node CH_URL hit — nodes behind the same
+# cluster can genuinely differ). All cluster reads go through chq.sh, so the
 # agent-query-safety caps and CH_REPLAY_DIR apply here too.
 #
 # NOT -e: we want to run every check and summarize, not abort on the first miss.
@@ -87,8 +89,35 @@ else
   warns+=("topology unknown")
 fi
 
-# --- 5. Companion reminder (model-side check) ---------------------------------
-echo "preflight: companions      check your available skills for clickhouse-best-practices, altinity-expert-clickhouse-overview, altinity-profiler-clickhouse — and report any missing (it reduces depth)."
+# --- 5. Fleet version spread (best-effort) --------------------------------------
+# Step 3 only compares the source tree against whichever single node CH_URL
+# happened to hit. On a proxy-fronted or multi-fork fleet, nodes behind the same
+# logical cluster can genuinely run different live versions (observed in the
+# field: one app's cluster ran three different community-release versions with
+# no shared fork tag) — a PASS above says nothing about the rest of the fleet.
+# Reuses the per-node spread query from SKILL.md's "Single node vs. proxy-fronted
+# fleet" section, scoped to the largest cluster topology found in step 4.
+if [ -n "$clusters" ]; then
+  top_cluster="$(printf '%s' "$clusters" | head -n1 | awk -F'\t' '{print $1}')"
+  spread="$("$CHQ" "SELECT hostName() AS node, version() AS ver FROM clusterAllReplicas($top_cluster, system.one)" 2>/dev/null | tail -n +2)"
+  if [ -n "$spread" ]; then
+    versions="$(printf '%s' "$spread" | awk -F'\t' '{print $2}' | sort -u)"
+    n_versions="$(printf '%s' "$versions" | grep -c . || true)"
+    if [ "$n_versions" -gt 1 ]; then
+      vlist="$(printf '%s' "$versions" | paste -sd, -)"
+      echo "preflight: version spread  WARN  cluster '$top_cluster' runs $n_versions different live versions across nodes: $vlist — the version-match above only covers the node CH_URL hit; verify per-node before trusting line numbers fleet-wide"
+      warns+=("mixed versions on cluster $top_cluster: $vlist")
+    else
+      echo "preflight: version spread  PASS  cluster '$top_cluster' uniform at $versions"
+    fi
+  else
+    echo "preflight: version spread  WARN  could not enumerate per-node versions for cluster '$top_cluster'"
+    warns+=("fleet version spread unknown")
+  fi
+fi
+
+# --- 6. Companion reminder (model-side check) ----------------------------------
+echo "preflight: companions      check your available skills for clickhouse-best-practices, altinity-expert-clickhouse-overview, altinity-profiler-clickhouse, and any *-clickhouse-context companion — and report any missing (it reduces depth)."
 
 # --- Summary -------------------------------------------------------------------
 if [ "${#blockers[@]}" -gt 0 ]; then

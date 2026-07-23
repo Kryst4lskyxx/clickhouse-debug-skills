@@ -44,4 +44,27 @@ out2="$(cd "$tmp/src" && PATH="$tmp/bin:$PATH" CH_REPLAY_DIR="$tmp/fx" \
   bash "$PRE" 2>&1)"; rc2=$?
 assert_rc "exits 2 when CH_URL unset" 2 "$rc2"
 
+# --- Fleet version spread: uniform fleet does not warn -------------------------
+ckey="$(_fixture_key chq "SELECT cluster, count() AS n FROM system.clusters GROUP BY cluster ORDER BY n DESC")"
+printf 'cluster\tn\nmain\t3\n' > "$tmp/fx/$ckey.tsv"
+skey="$(_fixture_key chq "SELECT hostName() AS node, version() AS ver FROM clusterAllReplicas(main, system.one)")"
+printf 'node\tver\nch-01\t24.3.1.2672\nch-02\t24.3.1.2672\nch-03\t24.3.1.2672\n' > "$tmp/fx/$skey.tsv"
+
+out3="$(cd "$tmp/src" && PATH="$tmp/bin:$PATH" \
+  CH_REPLAY_DIR="$tmp/fx" CH_URL="http://node:8123" PROM="http://prom:9090" \
+  bash "$PRE" 2>&1)"
+assert_contains "uniform fleet: version spread PASS" "$out3" "version spread  PASS"
+assert_contains "uniform fleet: does not warn" "$out3" "STATUS: READY"
+assert_not_contains "uniform fleet: should not report mixed versions" "$out3" "mixed versions"
+
+# --- Fleet version spread: mixed versions across the fleet WARNs ---------------
+printf 'node\tver\nch-01\t24.3.1.2672\nch-02\t24.8.4.13\nch-03\t25.1.4.53\n' > "$tmp/fx/$skey.tsv"
+out4="$(cd "$tmp/src" && PATH="$tmp/bin:$PATH" \
+  CH_REPLAY_DIR="$tmp/fx" CH_URL="http://node:8123" PROM="http://prom:9090" \
+  bash "$PRE" 2>&1)"
+assert_contains "mixed fleet: version spread WARN" "$out4" "version spread  WARN"
+assert_contains "mixed fleet: names the divergent versions" "$out4" "24.8.4.13"
+assert_contains "mixed fleet: surfaces as a warning in the summary" "$out4" "mixed versions on cluster main"
+assert_contains "mixed fleet: overall status still READY (non-fatal)" "$out4" "STATUS: READY (with warnings"
+
 finish "preflight.test.sh"
