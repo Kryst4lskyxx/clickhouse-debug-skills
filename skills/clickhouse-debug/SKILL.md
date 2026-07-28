@@ -15,7 +15,7 @@ description: >-
 license: Apache-2.0
 metadata:
   author: Ye Yuan
-  version: "0.7.0"
+  version: "0.7.1"
 ---
 
 # ClickHouse cluster & query debugging
@@ -322,13 +322,15 @@ or out, and only drill where the evidence points. Don't dump every metric — th
 buries the signal and burns the cluster.
 
 ```
-1. Frame      What changed, when, on which node/pod? Get a timestamp.
+1. Frame      What changed, when, on which node/pod? Move to Outside only once
+              you have a concrete timestamp and scope (one node vs. cluster-wide).
 2. Outside    Prometheus: is it up? OOM? CPU/iowait/mem/disk? cluster-wide vs one node?
               -> references/cluster-state.md
 3. Inside     system.* over chq.sh: errors, queries, parts, merges, replicas.
               -> references/query-state.md
 4. Confirm    Map the symptom to source in THIS tree (error code -> throw site,
-              metric -> what increments it). Don't assert a cause you can't point at.
+              metric -> what increments it). State a cause only once you can
+              point to the file:line producing it.
 5. Report     Live narration of what each step ruled in/out, then an RCA writeup.
 ```
 
@@ -502,5 +504,8 @@ OOM, say the in-server evidence is gone and point at OS logs (`dmesg`, `last`,
 These incidents recur across a fleet. When a diagnosis lands on a non-obvious
 mechanism — any cause that wasn't obvious from the symptom (a hardware tier
 mismatch, a version-specific crash path, a stampede pattern, a contaminated
-metric, a missing or mis-owned counter, a lost Keeper session) — it's worth a
-memory note so the next instance is minutes not hours.
+metric, a missing or mis-owned counter, a lost Keeper session) — record the
+mechanism, not just the symptom, so the next match is on cause and takes
+minutes, not hours: add it to the org's `*-clickhouse-context` companion's
+incident library if one is installed (see "Companion skills" above), or your
+own memory/notes system otherwise.

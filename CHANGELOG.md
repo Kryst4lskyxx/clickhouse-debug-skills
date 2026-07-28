@@ -8,6 +8,32 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.7.1] - 2026-07-28
+
+A wording pass over `SKILL.md`'s "triage workflow" steps and closing section,
+applying a stricter completion-criterion / positive-framing lens. No new
+capability, no behavior change to scripts or references.
+
+### Changed
+- **`1. Frame` step gets an explicit, checkable gate.** It previously ended on
+  "Get a timestamp" — only one of the three questions the step actually asks
+  (what changed, when, on which node/pod). It now reads "Move to Outside only
+  once you have a concrete timestamp and scope (one node vs. cluster-wide)",
+  closing the gap between what the step asks and what it checks before letting
+  the agent move on.
+- **`4. Confirm` step's guardrail restated positively.** "Don't assert a cause
+  you can't point at" is a prohibition; it now reads "State a cause only once
+  you can point to the file:line producing it" — same rule, phrased as the
+  target behavior instead of the thing to avoid.
+- **"Capturing what you learn" made actionable.** It previously ended on "it's
+  worth a memory note" with no stated destination. It now names where: the
+  org's `*-clickhouse-context` companion's incident library if one is
+  installed (linking back to the companion-skills section, which already
+  documents reading that same library before drilling), or the operator's own
+  memory/notes system otherwise. Also tightened to "record the mechanism, not
+  just the symptom" — the actual reason a captured incident saves time on the
+  next match.
+
 ## [0.7.0] - 2026-07-23
 
 Closes four gaps found in a deliberate discovery pass: thin eval coverage
