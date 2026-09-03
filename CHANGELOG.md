@@ -8,6 +8,95 @@ minor = new capability/reference/script, major = breaking behavior or layout cha
 
 _Nothing yet. Add user-visible changes here; a maintainer will cut the next release._
 
+## [0.8.0] - 2026-09-03
+
+Adds a **documentation authority** — the `clickhouse-docs` and `context7` MCPs —
+and, more importantly, the precedence rules that keep it from eroding the thing
+this skill exists for. Docs are a cheaper, faster authority sitting next to an
+expensive one; the whole design premise is that **docs narrow the search, source
+closes the claim**, the same relationship Prometheus already has to `system.*`.
+
+### Added
+- **"Documentation lookup" doctrine in `SKILL.md`.** A three-way precedence rule
+  (mechanism → matched source *always*; remedy → best-practices rule first;
+  semantics → docs, confirmed in source when a number drives the RCA), five named
+  triggers, a ~3-lookup budget, the egress rule, and five red flags. Scope is
+  deliberately narrow: settings/defaults, `<VersionHistory>`/changelogs, and
+  `system.*` column semantics. Docs are explicitly **not** a general oracle.
+- **`references/docs-lookup.md`** — retrieval mechanics. A verified path map, the
+  four rules that stop the docs filesystem returning a misleading zero-result, two
+  worked patterns, the Context7 client-driver lane, and the egress rule.
+- **The `<VersionHistory>` → `git grep` pattern.** Your tree holds one version and
+  so cannot say what the previous release did — but a full clone carries every
+  tag. Docs name the suspect setting and release; `git grep '<setting>' <tag>`
+  proves the value in code. A worked example uses a real, verified case
+  (`merge_selector_enable_heuristic_to_lower_max_parts_to_merge_at_once`, default
+  0 in 25.12 → 1 in 26.7). If the tree is shallow, the docs claim stands but is
+  labelled.
+- **`docs_path` column in `references/routing.tsv`**, surfaced by `./route.sh`.
+  Codes the docs provably cannot answer (`KEEPER_EXCEPTION`,
+  `CANNOT_SCHEDULE_TASK`) are marked `-` and print `docs: none — source-confirm
+  only`, so the agent learns that from the routing table instead of from a wasted
+  search. There is no error-code catalog in the docs at all.
+- **`submit_feedback` deny hook** (`scripts/hooks/pretooluse-docs-feedback-guard.sh`,
+  wired in `hooks/hooks.json`). It is an outbound *write* to a third party's docs
+  team, made mid-incident on the operator's employer's behalf. Read-only docs tools
+  pass through untouched. Query *sanitization* is deliberately left to judgement:
+  pattern-matching "is this an internal hostname" misfires both ways, and a guard
+  that cries wolf during an incident gets bypassed.
+- **`[docs — not source-confirmed]` tag** in the RCA Evidence block, plus the rule
+  that no docs line may carry the `## Root cause` sentence. An untagged docs URL
+  between two `file:line` citations launders itself into evidence.
+- **Two pressure scenarios**, deliberate mirrors of each other:
+  `docs-shortcut-pressure` (punishes answering an error code from docs under time
+  pressure) and `setting-default-pressure` (punishes naming a setting value from
+  memory without checking its default for the running version). Scoring a guardrail
+  only in the abstention direction teaches abstinence rather than precedence.
+  **Neither baseline has been run yet** — per `evals/pressure/README.md`, if the
+  control already complies, the prose isn't earning its tokens and should be cut
+  back to the mechanical parts.
+- **Test coverage** for the new surfaces: `routing.tsv` schema/width/`docs_path`
+  format guards, `route.sh` docs output for covered and uncovered codes, and the
+  feedback guard (blocks suffix-matched `submit_feedback`, passes read-only docs
+  tools, fails open on an unparseable payload).
+
+### Fixed
+- **`preflight.sh` no longer false-PASSes the source-tree check.** The
+  `git describe --tags` fallback succeeds in *any* tagged git repo, so running
+  preflight from a non-ClickHouse checkout reported
+  `source tree PASS v0.7.1-… (git describe)` — claiming source confirmation was
+  available when it was not. It now requires a structural marker of the CH tree
+  (`src/Common/ErrorCodes.cpp` + `src/Storages/MergeTree/`) before trusting git.
+  Found by running preflight against a live 26.3 container from this repo. The
+  bug predates this release but the new docs→git cross-version pattern made it
+  load-bearing: a false PASS would send `git tag` / `git grep` into the wrong tree.
+- **`preflight.sh` reports release-tag availability** (`release tags PASS/WARN`).
+  Tags are what make the docs→git confirmation possible; a shallow clone or
+  tarball has none, and discovering that mid-incident is late.
+
+### Changed
+- **Detection ritual now covers the tool list, not just the skill list.** MCPs
+  don't appear among skills, so the previous instruction was checking the wrong
+  place for them. Per-MCP depth-loss lines added: no `clickhouse-docs` → fall back
+  to `WebFetch` and mark unconfirmable semantics as assumptions; no `context7` →
+  driver-side and K8s-operator explanations stay labelled hypotheses.
+- **Fix stage: never name a setting value from memory.** Operational levers still
+  come from this skill's references, but their defaults and version history now
+  come from the docs MCP. A recommendation to "raise `background_pool_size`" that
+  assumes the wrong baseline is how a fix becomes the next incident.
+- **`preflight.sh` gained a second companion-reminder line** for the two MCPs,
+  pointing at the **tool** list. Without it the script and `SKILL.md` would have
+  drifted: the skill claims preflight "prints a reminder to do this check", and
+  the check had grown while the reminder hadn't.
+- **Enforcement section** documents both `PreToolUse` hooks and says why
+  sanitization is taught rather than enforced.
+- **`route.sh` marks its docs line "(only if a trigger applies)".** A path printed
+  on every lookup is a standing invitation to read docs, which is the inverse of
+  the named-trigger rule; the line is a bookmark, not an instruction.
+- **README** helper list, reference-playbook list, Safety section and layout tree
+  updated. The reference list also gained `references/keeper-state.md`, which it
+  had been missing since v0.4.0.
+
 ## [0.7.1] - 2026-07-28
 
 A wording pass over `SKILL.md`'s "triage workflow" steps and closing section,

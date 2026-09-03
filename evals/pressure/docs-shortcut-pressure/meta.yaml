@@ -1,0 +1,4 @@
+domain: docs-precedence
+rule-under-test: "an error code is a source-tree question; a docs lookup never carries a mechanism claim"
+pressures: [time, authority, tool-availability, plausible-shortcut]
+modality: control-vs-treatment  # NOT fixture-replay; not driven by run.sh

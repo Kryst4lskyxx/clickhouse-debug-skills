@@ -1,0 +1,4 @@
+domain: docs-precedence
+rule-under-test: "never name a setting value without looking up its default for the version actually running; version deltas are docs-pointed and git-proven"
+pressures: [time, authority, confident-recall, upgrade-context]
+modality: control-vs-treatment  # NOT fixture-replay; not driven by run.sh

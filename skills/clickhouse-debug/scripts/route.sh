@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Look up which reference playbook + altinity specialist to use for an error code
-# or symptom keyword. Reads references/routing.tsv (the single source of truth);
-# the SKILL.md routing table is the human view of the same map.
+# Look up which reference playbook + altinity specialist + ClickHouse-docs page to
+# use for an error code or symptom keyword. Reads references/routing.tsv (the single
+# source of truth); the SKILL.md routing table is the human view of the same map.
 #
 # Usage:
 #   ./route.sh CANNOT_SCHEDULE_TASK
@@ -23,8 +23,18 @@ matches="$(awk -F'\t' -v t="$lc" '
   NR==1 { next }
   {
     p = tolower($1)
-    if (index(p, t) > 0 || index(t, p) > 0)
-      printf "%s\t-> %s + Skill: %s  (%s)\n", $1, $2, $3, $4
+    if (index(p, t) > 0 || index(t, p) > 0) {
+      # docs_path "-" means the docs have no usable page for this symptom. Say so
+      # out loud: silence reads as "not looked up yet" and invites an open-ended
+      # docs search, which for a bare error code returns noise, not an answer.
+      #
+      # "if a trigger applies" is load-bearing, not hedging. This line is a
+      # bookmark, not an instruction — printing a path on every lookup would turn
+      # route.sh into a standing invitation to read docs, which is the opposite of
+      # the named-trigger rule in SKILL.md.
+      d = ($5 == "-") ? "none — source-confirm only" : $5 "  (only if a trigger applies)"
+      printf "%s\t-> %s + Skill: %s  (%s)\n\tdocs: %s\n", $1, $2, $3, $4, d
+    }
   }' "$TSV")"
 
 if [ -n "$matches" ]; then
