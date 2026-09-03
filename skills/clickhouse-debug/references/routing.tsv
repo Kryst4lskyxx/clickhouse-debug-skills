@@ -1,25 +1,25 @@
-pattern	primary_reference	specialist	note
-overview	references/cluster-state.md	altinity-expert-clickhouse-overview	don't know where to start — health snapshot + routing
-cache	references/query-state.md	altinity-expert-clickhouse-caches	mark / uncompressed / query cache hit-ratio
-dictionary	references/query-state.md	altinity-expert-clickhouse-dictionaries	load failure / high dictionary memory
-kafka	references/query-state.md	altinity-expert-clickhouse-kafka	consumer lag / errors / thread starvation
-mutation	references/query-state.md	altinity-expert-clickhouse-mutations	stuck or slow ALTER UPDATE/DELETE
-ACCESS_DENIED	references/query-state.md	altinity-expert-clickhouse-grants	grants / auth after upgrade
-AUTHENTICATION_FAILED	references/query-state.md	altinity-expert-clickhouse-grants	grants / auth after upgrade
-NOT_ENOUGH_PRIVILEGES	references/query-state.md	altinity-expert-clickhouse-grants	grants / privileges
-grant	references/query-state.md	altinity-expert-clickhouse-grants	grants / auth / privileges
-index	references/query-state.md	altinity-expert-clickhouse-index-analysis	scans larger than expected / ORDER BY / skip-index
-INSERT	references/query-state.md	altinity-expert-clickhouse-ingestion	slow INSERT / high part-creation / batch sizing
-SELECT	references/query-state.md	altinity-expert-clickhouse-reporting	slow SELECT latency / query-pattern analysis
-schema	references/query-state.md	altinity-expert-clickhouse-schema	partitioning / ORDER BY / MV anti-patterns
-storage	references/cluster-state.md	altinity-expert-clickhouse-storage	disk usage / compression / part sizes / slow IO
-TOO_MANY_PARTS	references/query-state.md	altinity-expert-clickhouse-part-log	merge backlog / micro-batch inserts
-part_log	references/query-state.md	altinity-expert-clickhouse-part-log	micro-batch / merge backlog / znode growth
-KEEPER_EXCEPTION	references/keeper-state.md	altinity-expert-clickhouse-replication	lead with keeper-state.md
-read-only	references/keeper-state.md	altinity-expert-clickhouse-replication	replicas read-only / ON CLUSTER DDL hang / post-Keeper-restart
-replication	references/keeper-state.md	altinity-expert-clickhouse-replication	replication lag / queue
-CANNOT_SCHEDULE_TASK	references/query-state.md	altinity-expert-clickhouse-metrics	thread-pool / admission stampede
-MEMORY_LIMIT_EXCEEDED	references/query-state.md	altinity-expert-clickhouse-metrics	memory pressure — lead with query-state.md; metrics for live saturation
-metrics	references/cluster-state.md	altinity-expert-clickhouse-metrics	load / connection saturation / queue buildup
-logs	references/query-state.md	altinity-expert-clickhouse-logs	system-log TTL / unbounded log growth
-security	references/query-state.md	altinity-expert-clickhouse-security	users / grants / exposure audit
+pattern	primary_reference	specialist	note	docs_path
+overview	references/cluster-state.md	altinity-expert-clickhouse-overview	don't know where to start — health snapshot + routing	/resources/support-center/knowledge-base/monitoring-debugging/mapping-of-system-metrics-to-prometheus-metrics.mdx
+cache	references/query-state.md	altinity-expert-clickhouse-caches	mark / uncompressed / query cache hit-ratio	/reference/system-tables/filesystem_cache.mdx
+dictionary	references/query-state.md	altinity-expert-clickhouse-dictionaries	load failure / high dictionary memory	/reference/system-tables/dictionaries.mdx
+kafka	references/query-state.md	altinity-expert-clickhouse-kafka	consumer lag / errors / thread starvation	/reference/engines/table-engines/integrations/kafka.mdx
+mutation	references/query-state.md	altinity-expert-clickhouse-mutations	stuck or slow ALTER UPDATE/DELETE	/reference/system-tables/mutations.mdx
+ACCESS_DENIED	references/query-state.md	altinity-expert-clickhouse-grants	grants / auth after upgrade	/reference/system-tables/grants.mdx
+AUTHENTICATION_FAILED	references/query-state.md	altinity-expert-clickhouse-grants	grants / auth after upgrade	/reference/system-tables/users.mdx
+NOT_ENOUGH_PRIVILEGES	references/query-state.md	altinity-expert-clickhouse-grants	grants / privileges	/reference/system-tables/grants.mdx
+grant	references/query-state.md	altinity-expert-clickhouse-grants	grants / auth / privileges	/reference/system-tables/grants.mdx
+index	references/query-state.md	altinity-expert-clickhouse-index-analysis	scans larger than expected / ORDER BY / skip-index	/reference/system-tables/data_skipping_indices.mdx
+INSERT	references/query-state.md	altinity-expert-clickhouse-ingestion	slow INSERT / high part-creation / batch sizing	/reference/settings/merge-tree-settings/parts-to.mdx
+SELECT	references/query-state.md	altinity-expert-clickhouse-reporting	slow SELECT latency / query-pattern analysis	/resources/support-center/knowledge-base/performance-optimization/find-expensive-queries.mdx
+schema	references/query-state.md	altinity-expert-clickhouse-schema	partitioning / ORDER BY / MV anti-patterns	/reference/system-tables/parts.mdx
+storage	references/cluster-state.md	altinity-expert-clickhouse-storage	disk usage / compression / part sizes / slow IO	/reference/system-tables/disks.mdx
+TOO_MANY_PARTS	references/query-state.md	altinity-expert-clickhouse-part-log	merge backlog / micro-batch inserts	/resources/support-center/knowledge-base/troubleshooting/exception-too-many-parts.mdx
+part_log	references/query-state.md	altinity-expert-clickhouse-part-log	micro-batch / merge backlog / znode growth	/reference/system-tables/part_log.mdx
+KEEPER_EXCEPTION	references/keeper-state.md	altinity-expert-clickhouse-replication	lead with keeper-state.md	-
+read-only	references/keeper-state.md	altinity-expert-clickhouse-replication	replicas read-only / ON CLUSTER DDL hang / post-Keeper-restart	/resources/support-center/knowledge-base/troubleshooting/restore-replica-after-storage-failure.mdx
+replication	references/keeper-state.md	altinity-expert-clickhouse-replication	replication lag / queue	/reference/system-tables/replication_queue.mdx
+CANNOT_SCHEDULE_TASK	references/query-state.md	altinity-expert-clickhouse-metrics	thread-pool / admission stampede	-
+MEMORY_LIMIT_EXCEEDED	references/query-state.md	altinity-expert-clickhouse-metrics	memory pressure — lead with query-state.md; metrics for live saturation	/resources/support-center/knowledge-base/performance-optimization/memory-limit-exceeded-for-query.mdx
+metrics	references/cluster-state.md	altinity-expert-clickhouse-metrics	load / connection saturation / queue buildup	/reference/system-tables/asynchronous_metrics.mdx
+logs	references/query-state.md	altinity-expert-clickhouse-logs	system-log TTL / unbounded log growth	/reference/system-tables/text_log.mdx
+security	references/query-state.md	altinity-expert-clickhouse-security	users / grants / exposure audit	/reference/system-tables/users.mdx

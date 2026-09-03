@@ -15,7 +15,7 @@ description: >-
 license: Apache-2.0
 metadata:
   author: Ye Yuan
-  version: "0.7.1"
+  version: "0.8.0"
 ---
 
 # ClickHouse cluster & query debugging
@@ -90,20 +90,44 @@ its real facts via its **application index** instead of asking the operator to r
 them, and scan its incident library before drilling from scratch. If absent, use the
 gather-inputs flow below unchanged.
 
-**Detecting them (do this explicitly, up front):** inspect your own available-skills
-list for `clickhouse-best-practices`, `altinity-expert-clickhouse-overview`,
-`altinity-profiler-clickhouse`, and any skill matching `*-clickhouse-context` (the
-org-private companion — its name varies per org, so match the pattern rather than
-a literal name), and **state which are present and which are missing** before you
-start drilling. This is the reliable detection path — you already have your skill
-list in context, whereas a filesystem scan can't see how each agent installs skills
-(`preflight.sh` only prints a reminder to do this check). For any missing suite, say
-what depth you lose: no `clickhouse-best-practices` → fixes are uncited general
-guidance; no `altinity-expert-clickhouse-*` → `system.*` drilling is limited to this
-skill's own references; no `altinity-profiler-clickhouse` → no pre-built cluster
-schema map in the Frame stage; no `*-clickhouse-context` companion → cluster/pod/app
-facts and prior incidents must be gathered from the operator instead of resolved
-from an application index. Proceed either way, but on the record.
+### Documentation MCPs (optional)
+
+Two MCP servers, if wired up, give this skill a *documentation* authority — ranked
+below the source tree, see "Documentation lookup" below. They install through MCP
+config, not `npx skills add`, and they show up in your **tool list**, not your
+skill list:
+
+- **`clickhouse-docs`** — the official docs as a searchable virtual filesystem.
+  Its three useful jobs here: **server/merge-tree settings and their defaults**,
+  **`<VersionHistory>` / changelogs** (did a default change under us on upgrade?),
+  and **`system.*` column semantics** (174 pages; the 31 best-practices rules
+  mention no `system.` table at all). It has **no error-code catalog** — codes stay
+  a source-tree question.
+- **`context7`** — client-driver docs (`clickhouse-connect`, `clickhouse-js`,
+  `clickhouse-go`, `clickhouse-java`) and `/altinity/clickhouse-operator` for
+  Kubernetes-side symptoms. **Not** a second source of server documentation.
+
+### Detecting the companions and MCPs
+
+**Do this explicitly, up front.** Inspect your own available-skills list for
+`clickhouse-best-practices`,
+`altinity-expert-clickhouse-overview`, `altinity-profiler-clickhouse`, and any skill
+matching `*-clickhouse-context` (the org-private companion — its name varies per org,
+so match the pattern rather than a literal name), **and your tool list** for the two
+documentation MCPs above. **State which are present and which are missing** before
+you start drilling. This is the reliable detection path — you already have your skill
+and tool lists in context, whereas a filesystem scan can't see how each agent installs
+skills (`preflight.sh` only prints a reminder to do this check). For any missing
+suite, say what depth you lose: no `clickhouse-best-practices` → fixes are uncited
+general guidance; no `altinity-expert-clickhouse-*` → `system.*` drilling is limited
+to this skill's own references; no `altinity-profiler-clickhouse` → no pre-built
+cluster schema map in the Frame stage; no `*-clickhouse-context` companion →
+cluster/pod/app facts and prior incidents must be gathered from the operator instead
+of resolved from an application index; no `clickhouse-docs` MCP → no settings
+defaults / version history / `system.*` column reference, so fall back to `WebFetch`
+on `clickhouse.com/docs` and **mark every semantic you can't source-confirm as an
+assumption**; no `context7` → driver-side and K8s-operator explanations stay labelled
+hypotheses. Proceed either way, but on the record.
 
 ## Before you touch anything: gather inputs
 
@@ -274,8 +298,10 @@ source ./.chenv && ./promq.sh 'up{cluster="..."}'
 - `./promq.sh 'PROMQL'` — instant query, sorted desc.
 - `./promq.sh 'PROMQL' range 6h 300s` — range, per-series avg/max.
 - `./chq.sh "SELECT ..."` — capped read-only SQL (TSV-with-names).
-- `./route.sh <error-code|keyword>` — which reference + altinity specialist to use
-  (executable form of the routing table; backed by `references/routing.tsv`).
+- `./route.sh <error-code|keyword>` — which reference + altinity specialist + docs
+  page to use (executable form of the routing table; backed by
+  `references/routing.tsv`). It prints `docs: none — source-confirm only` for the
+  codes the docs provably can't answer, so you don't spend a search finding out.
 
 Both scripts **retry once** on a transient curl failure (DNS/connect/TLS reset) —
 a sandbox/resolver hiccup (curl exit 6/7) is not an outage, so don't conclude the
@@ -307,13 +333,23 @@ in front of dozens of nodes. Find out which early — it changes how you read
 
 ### Enforcement (Claude Code plugin)
 
-When this skill is installed as a **Claude Code plugin**, a `PreToolUse` hook
-(`scripts/hooks/pretooluse-chq-guard.sh`) blocks a raw `curl` that fires a query at
-a ClickHouse port (8123/8443/9000/9440) without going through `chq.sh` — an uncapped
-probe is exactly what once OOM-killed a node. Health checks (`/ping`) and `chq.sh`
-itself pass through. Installs via `npx skills add` ship the script but not the wiring
-(it lives in the plugin's `hooks/hooks.json`); to enable it there, register the same
-`PreToolUse`→`Bash` hook in your own settings pointing at the bundled script.
+When this skill is installed as a **Claude Code plugin**, two `PreToolUse` hooks
+enforce the two rules that prose alone shouldn't be trusted to hold at 3am:
+
+- `scripts/hooks/pretooluse-chq-guard.sh` blocks a raw `curl` that fires a query at
+  a ClickHouse port (8123/8443/9000/9440) without going through `chq.sh` — an
+  uncapped probe is exactly what once OOM-killed a node. Health checks (`/ping`)
+  and `chq.sh` itself pass through.
+- `scripts/hooks/pretooluse-docs-feedback-guard.sh` blocks the docs MCP's
+  `submit_feedback` — an outbound write to a third party's docs team. Every
+  read-only docs tool passes through untouched. Query *sanitization* is
+  deliberately left to judgement, not a hook: pattern-matching "is this an internal
+  hostname" misfires in both directions, and a guard that cries wolf during an
+  incident gets bypassed.
+
+Installs via `npx skills add` ship the scripts but not the wiring (it lives in the
+plugin's `hooks/hooks.json`); to enable them there, register the same `PreToolUse`
+hooks in your own settings pointing at the bundled scripts.
 
 ## The triage workflow
 
@@ -360,11 +396,12 @@ timezone()"` vs `date -u` vs a known Prometheus point) so a window you carry fro
 one view to another lands on the same wall-clock second.
 
 The reference files are the deep playbooks — three by stage (Outside → Inside →
-Confirm) plus one cross-cutting domain file (Keeper / read-only replicas, which
-itself spans all three stages). Read the one the symptom points to; you usually
-need more than one because real incidents cross the boundary (a node shows down in
-Prometheus → you drill into `query_log` to find the query that killed it → you
-confirm the throw site in the source).
+Confirm), one cross-cutting domain file (Keeper / read-only replicas, which itself
+spans all three stages), and one cross-cutting tool file (documentation lookup).
+Read the one the symptom points to; you usually need more than one because real
+incidents cross the boundary (a node shows down in Prometheus → you drill into
+`query_log` to find the query that killed it → you confirm the throw site in the
+source).
 
 - **`references/cluster-state.md`** — Outside / Prometheus playbook. Node/pod
   up-ness, OOM, CPU/iowait/load, memory, disk (incl. SATA-vs-NVMe hardware tiers),
@@ -387,6 +424,12 @@ confirm the throw site in the source).
   Keeper restart**. Covers `system.zookeeper_connection` / `replicas` /
   `replication_queue` / `distributed_ddl_queue`, the Keeper metric families, the
   source mechanism for read-only, and the operator-side recovery ladder.
+- **`references/docs-lookup.md`** — documentation-lookup mechanics (cross-cutting).
+  Where settings / `system.*` / Keeper-ops / changelog pages live, the four rules
+  that stop the docs filesystem returning a misleading zero-result, the
+  `<VersionHistory>` → `git grep` pattern for "did a default change under us", the
+  Context7 client-driver lane, and the egress rule. Read it the first time you
+  reach for docs in a session.
 
 ### Routing into the altinity specialists (deeper system.* playbooks)
 
@@ -423,6 +466,77 @@ references (they tie the symptom to a `file:line` in the matched tree) and pull 
 specialist in for extra SQL or domain breadth. Whatever you route to, the value this
 skill keeps is the same: Prometheus correlation, resource-capped HTTP probes, and
 confirming the mechanism against the source you're standing in.
+
+## Documentation lookup (the docs MCPs)
+
+Docs are a *fourth* authority, and a deliberately subordinate one. The rule, in
+one line: **docs narrow the search, source closes the claim** — the same
+relationship Prometheus has to `system.*` in the funnel above.
+
+**Docs have exactly three jobs here: settings and their defaults,
+`<VersionHistory>` / changelogs, and `system.*` column semantics.** They are
+**not** a general ClickHouse oracle, and "look it up in the docs" is not a
+substitute for a step of the funnel. Through stages 1–4 (Frame → Outside →
+Inside → Confirm) the default answer is the source tree and the cluster; a docs
+lookup in those stages is an exception you name out loud in the narration, and it
+must be one of the five triggers below.
+
+**Precedence — three kinds of claim, three authorities:**
+
+- **Mechanism** ("this is why it crashed") → **the matched source, always.** Docs
+  describe *intended* behavior; your cluster runs *actual* behavior, and on a fork
+  those are known to differ. A docs page never carries a mechanism claim.
+- **Remedy** ("change this") → **`clickhouse-best-practices` rule first**, docs
+  only for the operational levers no rule covers.
+- **Semantics** ("this setting/column means X") → docs are fine, but if a number
+  drives the RCA, confirm it in source for the *running* version.
+
+**Reach for docs on these five triggers, and otherwise don't:**
+
+1. You're about to **recommend changing a server / merge-tree setting** — look up
+   its default *and* its `<VersionHistory>` before naming a value.
+2. The incident **follows an upgrade**, or `preflight.sh` flagged a version delta
+   or a mixed-version fleet — changelog + `VersionHistory` for the settings in play.
+3. You're about to **interpret a `system.*` column you will base a conclusion on**
+   that `references/query-state.md` doesn't cover. (A column you're merely curious
+   about is not a trigger.)
+4. You're on the **Keeper recovery ladder** and need the operator-side procedure.
+5. You need the **Prometheus ↔ `system.*` metric mapping** to settle a
+   disagreement between the outside and inside views.
+
+Budget: **~3 lookups per investigation** — a search is ~2.5–3k tokens and a full
+`system.*` page 3–6k. Past three, say why out loud.
+
+**Version deltas: docs point, `git` proves.** Your tree holds one version, so it
+cannot tell you what the previous release did — but a full clone carries every
+tag, and both sides of the change are already on disk. `<VersionHistory>` names
+the suspect setting and release; `git grep '<setting>' <tag> -- src/...` confirms
+the value in code. Worked example in `references/docs-lookup.md`. If the tree is
+shallow or a tarball, keep the docs claim and **label it**.
+
+**Egress — doc lookups leave the building.** They don't touch the cluster, but
+Context7 states plainly that queries go to its API. Send ClickHouse *concepts*
+only: never cluster / host / pod / database / table / column names, query text,
+log lines, user names, credentials, or incident IDs. Not *"why is
+`prod_events_shard3` throwing TOO_MANY_PARTS"* — *"what is the default of
+`parts_to_throw_insert`"*. **`submit_feedback` is never called by this skill**
+(an outbound write to a third party's docs team); a `PreToolUse` hook blocks it.
+
+**Red flags — STOP:**
+
+- Reaching for docs to explain an **error code you haven't grepped yet**. There is
+  no error-code catalog; `KEEPER_EXCEPTION` and `CANNOT_SCHEDULE_TASK` return
+  noise. Run `./route.sh <CODE>` — it prints `docs: none` when that's the truth.
+- A docs URL sitting in the Evidence block **untagged**, next to `file:line`
+  citations, where it reads as source-confirmed.
+- Pasting a **table or host name** into a Context7 or docs query.
+- Treating a **zero-result from a recursive `rg`** as "absent" — it's blind to MDX
+  components and means "unknown" (see `references/docs-lookup.md`, rule 3).
+- Using docs for **schema/query/insert design guidance** — that's
+  `clickhouse-best-practices`, already installed, pre-digested, free.
+
+The retrieval mechanics — path map, the four rules that stop the docs FS lying to
+you, and both worked patterns — are in **`references/docs-lookup.md`**.
 
 ## Confirming against the source (the "matched version" step)
 
@@ -470,7 +584,11 @@ be rule-backed. Invoke `clickhouse-best-practices` and cite the rule by name
 Operational/infra fixes that best-practices doesn't cover (per-query
 `max_memory_usage` caps, `use_hedged_requests`, `max_concurrent_queries`, FD
 limits, disk rebuilds, hardware tiers) stay in this skill's references — they're
-the levers the diagnosis reference files document.
+the levers the diagnosis reference files document. Their **defaults and version
+history** come from the `clickhouse-docs` MCP (trigger 1 above): **never name a
+value for a setting without first looking up its default for the version actually
+running.** A recommendation to "raise `background_pool_size`" that silently
+assumes the wrong baseline is how a fix becomes the next incident.
 
 ## Output: live triage, then an RCA writeup
 
@@ -485,6 +603,8 @@ auditable. Then close with:
 ## Evidence
 - <metric/query result> -> <what it shows>           (with numbers + timestamps)
 - <source file:line>    -> <why this is the mechanism>
+- <docs path>           -> <setting default / column semantics / version delta>
+                                                     [docs — not source-confirmed]
 - <what you ruled out and why> (so it isn't re-investigated)
 
 ## Fix (in priority order)
@@ -494,6 +614,14 @@ auditable. Then close with:
 ## Severity & scope
 <one node or fleet-wide? urgent or latent? blast radius>
 ```
+
+**The `[docs — not source-confirmed]` tag is mandatory on any docs-derived line,
+and no docs line may carry the `## Root cause` sentence.** A reader scanning the
+writeup has to be able to tell in one glance which claims are source-confirmed and
+which are docs-grade; an untagged docs URL sitting between two `file:line`
+citations launders itself into evidence. Where the `<VersionHistory>` → `git grep`
+pattern was used, show both lines — the docs line credited as the pointer, the git
+line carrying the claim.
 
 Be honest about uncertainty: if the pre-crash `metric_log` buffer was lost to the
 OOM, say the in-server evidence is gone and point at OS logs (`dmesg`, `last`,

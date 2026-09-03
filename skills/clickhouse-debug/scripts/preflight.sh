@@ -118,6 +118,7 @@ fi
 
 # --- 6. Companion reminder (model-side check) ----------------------------------
 echo "preflight: companions      check your available skills for clickhouse-best-practices, altinity-expert-clickhouse-overview, altinity-profiler-clickhouse, and any *-clickhouse-context companion — and report any missing (it reduces depth)."
+echo "preflight: docs MCPs       check your TOOL list (not your skill list) for the clickhouse-docs and context7 MCPs — and report any missing (no settings defaults / VersionHistory / system.* column reference; fall back to WebFetch and label unconfirmed semantics as assumptions)."
 
 # --- Summary -------------------------------------------------------------------
 if [ "${#blockers[@]}" -gt 0 ]; then

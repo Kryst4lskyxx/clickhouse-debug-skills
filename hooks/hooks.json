@@ -10,6 +10,16 @@
             "args": ["${CLAUDE_PLUGIN_ROOT}/skills/clickhouse-debug/scripts/hooks/pretooluse-chq-guard.sh"]
           }
         ]
+      },
+      {
+        "matcher": ".*submit_feedback",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/skills/clickhouse-debug/scripts/hooks/pretooluse-docs-feedback-guard.sh"]
+          }
+        ]
       }
     ]
   }
