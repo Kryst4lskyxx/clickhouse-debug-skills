@@ -60,6 +60,20 @@ closes the claim**, the same relationship Prometheus already has to `system.*`.
   feedback guard (blocks suffix-matched `submit_feedback`, passes read-only docs
   tools, fails open on an unparseable payload).
 
+### Fixed
+- **`preflight.sh` no longer false-PASSes the source-tree check.** The
+  `git describe --tags` fallback succeeds in *any* tagged git repo, so running
+  preflight from a non-ClickHouse checkout reported
+  `source tree PASS v0.7.1-… (git describe)` — claiming source confirmation was
+  available when it was not. It now requires a structural marker of the CH tree
+  (`src/Common/ErrorCodes.cpp` + `src/Storages/MergeTree/`) before trusting git.
+  Found by running preflight against a live 26.3 container from this repo. The
+  bug predates this release but the new docs→git cross-version pattern made it
+  load-bearing: a false PASS would send `git tag` / `git grep` into the wrong tree.
+- **`preflight.sh` reports release-tag availability** (`release tags PASS/WARN`).
+  Tags are what make the docs→git confirmation possible; a shallow clone or
+  tarball has none, and discovering that mid-incident is late.
+
 ### Changed
 - **Detection ritual now covers the tool list, not just the skill list.** MCPs
   don't appear among skills, so the previous instruction was checking the wrong

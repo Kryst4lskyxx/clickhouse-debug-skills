@@ -131,7 +131,21 @@ both revisions, and it is a **source-confirmed** claim.
 `git rev-parse <tag>` fails), step 2 is unavailable. Say so, keep the docs claim,
 and tag it `[docs — not source-confirmed]` in the Evidence block. A labelled soft
 claim is fine; an unlabelled one is the failure mode this whole file exists to
-prevent.
+prevent. `preflight.sh` reports tag availability up front (`release tags PASS/WARN`)
+so you learn this before an incident, not during one.
+
+**How far to trust `<VersionHistory>`.** Spot-checked against two real servers
+(26.3.17.110 and 26.8.2.7): of the merge-tree defaults that actually differ
+between them, three were checked against the docs and all three carried a
+`<VersionHistory>` block naming a release that correctly falls between the two —
+`merge_selector_enable_heuristic_to_lower_max_parts_to_merge_at_once` (26.7),
+`shared_merge_tree_enable_coordinated_merges` (26.6), and
+`shared_merge_tree_replica_set_max_lifetime_seconds` (26.4). The version data is
+good. What it is *not* is a substitute for step 2: note that
+`<SettingsInfoBlock default_value>` always shows the **latest** default (it read
+`1` and `1800` — the 26.8 values — while 26.3 was serving `0` and `300`). Reading
+the `SettingsInfoBlock` and skipping the `VersionHistory` is the specific way to
+get this wrong, and it will read as authoritative.
 
 ## Worked pattern B — a `system.*` column you're about to conclude from
 
